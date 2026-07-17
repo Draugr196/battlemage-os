@@ -37,8 +37,7 @@ modules:
         # "firefox" is the main package, "firefox-langpacks" is a dependency
         - firefox
         - firefox-langpacks # also remove firefox dependency (not required for all packages, this is a special case)
-        - gnome-software
-        - gnome-software-fedora-langpacks
+
 
   - type: default-flatpaks
     configurations:
