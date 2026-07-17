@@ -23,8 +23,8 @@ modules:
         - vim
         - nmap
         - zsh
-        - gnome-tweaks
-        - gnome-extensions-appi
+      #  - gnome-tweaks
+      #  - gnome-extensions-app
         - pcsc-lite
         - pcsc-lite-ccid
         - opensc
@@ -38,7 +38,10 @@ modules:
         - firefox
         - firefox-langpacks # also remove firefox dependency (not required for all packages, this is a special case)
 
-
+  -  type: gnome-extensions
+     install:
+       - user-themes
+       - 
   - type: default-flatpaks
     configurations:
       - notify: true # Send notification after install/uninstall is finished (true/false)
