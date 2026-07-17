@@ -6,8 +6,8 @@ name: battlemage-os
 description: This is my personal OS image.
 
 # the base image to build on top of (FROM) and the version tag to use
-base-image: ghcr.io/ublue-os/silverblue-main
-image-version: 44 # latest is also supported if you want new updates ASAP
+base-image: ghcr.io/ublue-os/bazzite-gnome
+image-version: stable # latest is also supported if you want new updates ASAP
 
 # module configuration, executed in order
 # you can include multiple instances of the same module
@@ -20,16 +20,16 @@ modules:
   - type: dnf
     install:
       packages:
-        - vim
+        #- vim
         - nmap
         - zsh
-        - pcsc-lite
-        - pcsc-lite-ccid
-        - opensc
-        - pkcs11-provider
+        #- pcsc-lite
+        #- pcsc-lite-ccid
+        #- opensc
+        #- pkcs11-provider
         - htop
         - vlc
-        - fastfetch
+        #- fastfetch
     remove:
       packages:
         # example: removing firefox (in favor of the flatpak)
@@ -37,9 +37,9 @@ modules:
         - firefox
         - firefox-langpacks # also remove firefox dependency (not required for all packages, this is a special case)
 
-  -  type: gnome-extensions
-     install:
-       - 19
+  #-  type: gnome-extensions
+     #install:
+       #- 19
   - type: default-flatpaks
     configurations:
       - notify: true # Send notification after install/uninstall is finished (true/false)
@@ -49,8 +49,8 @@ modules:
           - org.gnome.Loupe
           - com.brave.Browser
           - io.frama.editide.editide
-          - com.github.tchx84.Flatseal
-          - io.github.kolunmi.Bazaar
+          #- com.github.tchx84.Flatseal
+          #- io.github.kolunmi.Bazaar
       - scope: user # Also add Flathub user repo, but no user packages
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
