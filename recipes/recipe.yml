@@ -18,15 +18,13 @@ modules:
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
   - type: dnf
-    repo:
-      - @epel
     install:
       packages:
         - vim
         - nmap
         - zsh
-        - gnome-tweaks
-        - gnome-extensions-app
+        #- gnome-tweaks
+        #- gnome-extensions-app
     remove:
       packages:
         # example: removing firefox (in favor of the flatpak)
