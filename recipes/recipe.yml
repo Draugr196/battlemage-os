@@ -28,6 +28,7 @@ modules:
         - opensc
         - pkcs11-provider
         - htop
+        - vlc
         - fastfetch
     remove:
       packages:
@@ -49,8 +50,7 @@ modules:
           - com.brave.Browser
           - io.frama.editide.editide
           - com.github.tchx84.Flatseal
-          - org.videolan.VLC
-          - io.github.kolumi.Bazaar
+          - io.github.kolunmi.Bazaar
       - scope: user # Also add Flathub user repo, but no user packages
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
