@@ -49,7 +49,7 @@ modules:
       - Background Logo
       - Launch New Instance
       - Places Status Indicator
-      - Window List
+      #- Window List
       
   - type: default-flatpaks
     configurations:
