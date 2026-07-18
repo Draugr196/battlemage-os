@@ -45,10 +45,10 @@ modules:
       - 1160
       - 517
     uninstall:
-      - Apps Menu
-      - Launch New Instance
-      - Places Status Indicator
-      #- Window List
+      - 7364
+      - 8
+      - 600
+      - 602
       #- Background Logo
   - type: default-flatpaks
     configurations:
