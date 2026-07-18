@@ -28,6 +28,8 @@ modules:
         - opensc
         - pkcs11-provider
         - htop
+        - gnome-tweaks
+        - gnome-extensions-app
         - vlc
         - fastfetch
     remove:
@@ -37,11 +39,17 @@ modules:
         - firefox
         - firefox-langpacks # also remove firefox dependency (not required for all packages, this is a special case)
 
-  -  type: gnome-extensions
-     install:
-       - 19
-       - 1160
-       - 517
+  - type: gnome-extensions
+    install:
+      - 19
+      - 1160
+      - 517
+    uninstall:
+      - Apps Menu
+      - Launch New Instance
+      - Places Status Indicator
+      - Window List
+      - Background Logo
   - type: default-flatpaks
     configurations:
       - notify: true # Send notification after install/uninstall is finished (true/false)
