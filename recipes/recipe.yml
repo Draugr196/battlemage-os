@@ -45,11 +45,12 @@ modules:
       - 1160
       - 517
     uninstall:
-      - 7364
-      - 8
-      - 600
-      - 602
-      #- Background Logo
+      - Apps Menu
+      - Background Logo
+      - Launch New Instance
+      - Places Status Indicator
+      - Window List
+      
   - type: default-flatpaks
     configurations:
       - notify: true # Send notification after install/uninstall is finished (true/false)
