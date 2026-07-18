@@ -1,7 +1,7 @@
 ---
 # yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
 # image will be published to ghcr.io/<user>/<name>
-name: battlemage-os
+name: battlemage
 # description will be included in the image's metadata
 description: This is my personal OS image.
 
@@ -38,7 +38,6 @@ modules:
         # "firefox" is the main package, "firefox-langpacks" is a dependency
         - firefox
         - firefox-langpacks # also remove firefox dependency (not required for all packages, this is a special case)
-        - gnome-classic-session
         - gnome-shell-extension-window-list
 
   - type: gnome-extensions
