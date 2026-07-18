@@ -46,8 +46,8 @@ modules:
       - 517
     uninstall:
       - Apps Menu
-      #- Launch New Instance
-      #- Places Status Indicator
+      - Launch New Instance
+      - Places Status Indicator
       #- Window List
       #- Background Logo
   - type: default-flatpaks
