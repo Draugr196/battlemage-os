@@ -18,11 +18,6 @@ modules:
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
   - type: dnf
-    group-install:
-      with-optional: true
-      packages:
-        - gnome-desktop
-        - multimedia
     install:
       packages:
         - vim
@@ -35,8 +30,46 @@ modules:
         - htop
         - gnome-tweaks
         - gnome-extensions-app
-        - vlc
         - fastfetch
+        - vlc
+        - at-spi2-atk
+        - at-spi2-core
+        - brltty
+        - orca
+        - speech-dispatcher
+        - gnome-text-editor
+        - nautilus
+        - yelp
+        - adobe-source-code-pro-fonts
+        - avahi
+        - baobab
+        - decibels
+        - glycin-thumbnailer
+        - gnome-backgrounds
+        - gnome-bluetooth
+        - gnome-calculator
+        - gnome-calendar
+        - gnome-characters
+        - gnome-clocks
+        - gnome-connections
+        - gnome-contacts
+        - gnome-disk-utility
+        - gnome-epub-thumbnailer
+        - gnome-font-viewer
+        - gnome-logs
+        - gnome-maps
+        - gnome-remote-desktop
+        - gnome-system-monitor
+        - gnome-user-docs
+        - gnome-user-share
+        - gnome-weather
+        - localsearch
+        - loupe
+        - rygel
+        - showtime
+        - snapshot
+        - sushi
+        - lollypop
     remove:
       packages:
         # example: removing firefox (in favor of the flatpak)
@@ -50,6 +83,7 @@ modules:
       - 19
       - 1160
       - 517
+      - 2087
     uninstall:
       - Apps Menu
       - Background Logo
@@ -63,12 +97,11 @@ modules:
         scope: system
         # If no repo information is specified, Flathub will be used by default
         install: # system flatpaks we want all users to have and not remove
-          - org.gnome.Loupe
           - com.brave.Browser
           - io.frama.editide.editide
           - com.github.tchx84.Flatseal
           - io.github.kolunmi.Bazaar
-          #- org.libreoffice.LibreOffice
+          - org.libreoffice.LibreOffice
       - scope: user # Also add Flathub user repo, but no user packages
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
