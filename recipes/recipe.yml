@@ -21,7 +21,8 @@ modules:
     group-install:
       with-optional: true
       packages:
-        - workstation-product
+        - gnome-desktop
+        - multimedia
     install:
       packages:
         - vim
