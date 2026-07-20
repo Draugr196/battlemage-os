@@ -27,8 +27,6 @@ modules:
     repos:
       files:
         - https://download.docker.com/linux/fedora/docker-ce.repo
-      nonfree:
-        - rpmfusion-nonfree
     install:
       packages:
         - vim
@@ -55,8 +53,6 @@ modules:
         - containerd.io
         - docker-buildx-plugin
         - docker-compose-plugin
-        - steam
-        - steam-devices
     remove:
       packages:
         # example: removing firefox (in favor of the flatpak)
