@@ -45,6 +45,7 @@ modules:
         - fastfetch
         - snapshot
         - vlc
+        - nautilus
         - fzf
         - waydroid
         - podman-compose
@@ -64,13 +65,14 @@ modules:
     install:
       - 19
       - 1160
+      - 615
       - 517
       - 2087
     uninstall:
       - Apps Menu
       - Background Logo
       - Launch New Instance
-      #- Places Status Indicator
+      - Places Status Indicator
       #- Window List
       
   - type: default-flatpaks
