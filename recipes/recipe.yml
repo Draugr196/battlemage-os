@@ -19,9 +19,11 @@ modules:
 
   - type: dnf
     group-install:
-      - gnome-desktop
-      - workstation-product
-      - desktop-accessibility
+      with-optional: true
+      packages:
+        - workstation-product
+        - gnome-desktop
+        - desktop-accessibility
     install:
       packages:
         - vim
