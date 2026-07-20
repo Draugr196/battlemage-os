@@ -24,6 +24,11 @@ modules:
         - workstation-product
         - gnome-desktop
         - desktop-accessibility
+    repos:
+      files:
+        - https://download.docker.com/linux/fedora/docker-ce.repo
+      nonfree:
+        - rpmfusion-nonfree
     install:
       packages:
         - vim
@@ -34,48 +39,24 @@ modules:
         - opensc
         - pkcs11-provider
         - htop
+        - btop
+        - tmux
+        - mc
+        - eza
         - gnome-tweaks
         - gnome-extensions-app
         - fastfetch
+        - snapshot
         - vlc
-        #- at-spi2-atk
-        #- at-spi2-core
-        #- brltty
-        #- orca
-        #- speech-dispatcher
-        #- gnome-text-editor
-        #- nautilus
-        #- yelp
-        #- adobe-source-code-pro-fonts
-        #- avahi
-        #- baobab
-        #- decibels
-        #- glycin-thumbnailer
-        #- gnome-backgrounds
-        #- gnome-bluetooth
-        #- gnome-calculator
-        #- gnome-calendar
-        #- gnome-characters
-        #- gnome-clocks
-        #- gnome-connections
-        #- gnome-contacts
-        #- gnome-disk-utility
-        #- gnome-epub-thumbnailer
-        #- gnome-font-viewer
-        #- gnome-logs
-        #- gnome-maps
-        #- gnome-remote-desktop
-        #- gnome-system-monitor
-        #- gnome-user-docs
-        #- gnome-user-share
-        #- gnome-weather
-        #- localsearch
-        #- loupe
-        #- rygel
-        #- showtime
-        #- snapshot
-        #- sushi
-        - lollypop
+        - fzf
+        - waydroid
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-buildx-plugin
+        - docker-compose-plugin
+        - steam
+        - steam-devices
     remove:
       packages:
         # example: removing firefox (in favor of the flatpak)
@@ -84,6 +65,7 @@ modules:
         - firefox
         - firefox-langpacks # also remove firefox dependency (not required for all packages, this is a special case)
         - gnome-shell-extension-window-list
+        - gnome-boxes
 
   - type: gnome-extensions
     install:
