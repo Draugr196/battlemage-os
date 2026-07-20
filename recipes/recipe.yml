@@ -18,6 +18,10 @@ modules:
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
   - type: dnf
+    group-install:
+      - gnome-desktop
+      - workstation-product
+      - desktop-accessibility
     install:
       packages:
         - vim
@@ -32,43 +36,43 @@ modules:
         - gnome-extensions-app
         - fastfetch
         - vlc
-        - at-spi2-atk
-        - at-spi2-core
-        - brltty
-        - orca
-        - speech-dispatcher
-        - gnome-text-editor
-        - nautilus
-        - yelp
-        - adobe-source-code-pro-fonts
-        - avahi
-        - baobab
-        - decibels
-        - glycin-thumbnailer
-        - gnome-backgrounds
-        - gnome-bluetooth
-        - gnome-calculator
-        - gnome-calendar
-        - gnome-characters
-        - gnome-clocks
-        - gnome-connections
-        - gnome-contacts
-        - gnome-disk-utility
-        - gnome-epub-thumbnailer
-        - gnome-font-viewer
-        - gnome-logs
-        - gnome-maps
-        - gnome-remote-desktop
-        - gnome-system-monitor
-        - gnome-user-docs
-        - gnome-user-share
-        - gnome-weather
-        - localsearch
-        - loupe
-        - rygel
-        - showtime
-        - snapshot
-        - sushi
+        #- at-spi2-atk
+        #- at-spi2-core
+        #- brltty
+        #- orca
+        #- speech-dispatcher
+        #- gnome-text-editor
+        #- nautilus
+        #- yelp
+        #- adobe-source-code-pro-fonts
+        #- avahi
+        #- baobab
+        #- decibels
+        #- glycin-thumbnailer
+        #- gnome-backgrounds
+        #- gnome-bluetooth
+        #- gnome-calculator
+        #- gnome-calendar
+        #- gnome-characters
+        #- gnome-clocks
+        #- gnome-connections
+        #- gnome-contacts
+        #- gnome-disk-utility
+        #- gnome-epub-thumbnailer
+        #- gnome-font-viewer
+        #- gnome-logs
+        #- gnome-maps
+        #- gnome-remote-desktop
+        #- gnome-system-monitor
+        #- gnome-user-docs
+        #- gnome-user-share
+        #- gnome-weather
+        #- localsearch
+        #- loupe
+        #- rygel
+        #- showtime
+        #- snapshot
+        #- sushi
         - lollypop
     remove:
       packages:
