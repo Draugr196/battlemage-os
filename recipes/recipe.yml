@@ -48,7 +48,6 @@ modules:
         - fzf
         - waydroid
         - podman-compose
-        - gnome-camera
         - papirus-icon-theme
     remove:
       packages:
