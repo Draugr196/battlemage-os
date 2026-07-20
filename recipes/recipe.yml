@@ -21,7 +21,7 @@ modules:
     group-install:
       with-optional: true
       packages:
-        - workstation-product-environment
+        - workstation-product
     install:
       packages:
         - vim
