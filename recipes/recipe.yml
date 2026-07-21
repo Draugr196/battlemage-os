@@ -54,6 +54,11 @@ modules:
         - file-roller
         - file-roller-nautilus
         - papirus-icon-theme
+        - ffmpeg
+    replace:
+      - from-repo: rpmfusion-free
+        packages:
+        - x265-libs
     remove:
       packages:
         # example: removing firefox (in favor of the flatpak)
