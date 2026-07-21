@@ -18,6 +18,8 @@ modules:
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
   - type: dnf
+    repos:
+      nonfree: rpmfusion
     group-install:
       with-optional: true
       packages:
@@ -49,6 +51,8 @@ modules:
         - fzf
         - waydroid
         - podman-compose
+        - file-roller
+        - file-roller-nautilus
         - papirus-icon-theme
     remove:
       packages:
