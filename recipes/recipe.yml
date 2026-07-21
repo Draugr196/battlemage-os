@@ -90,9 +90,8 @@ modules:
       - Places Status Indicator
       #- Window List
   - type: script
-      snippets:
-        - |
-          chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/     
+    snippets:
+      - chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/     
   - type: default-flatpaks
     configurations:
       - notify: true # Send notification after install/uninstall is finished (true/false)
