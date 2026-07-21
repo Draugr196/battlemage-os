@@ -59,10 +59,11 @@ modules:
         - fzf
         - waydroid
         - podman-compose
-        - file-roller
-        - file-roller-nautilus
         - papirus-icon-theme
         - ffmpeg
+        - steam
+        - steam-devices
+        - protontricks
 
     remove:
       packages:
@@ -88,6 +89,10 @@ modules:
       - Launch New Instance
       - Places Status Indicator
       #- Window List
+  - type: script
+      snippets:
+        - chmod +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/*.js
+        - dconf update
       
   - type: default-flatpaks
     configurations:
