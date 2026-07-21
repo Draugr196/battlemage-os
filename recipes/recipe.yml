@@ -26,7 +26,16 @@ modules:
         - workstation-product
         - gnome-desktop
         - desktop-accessibility
+    replace:
+      - from-repo: rpmfusion-free
+        allow-erasing: true
+        packages:
+          - x265-libs
+          - x264-libs
+          - libavcodec-freeworld
+          - ffmpeg-libs
     install:
+      allow-erasing: true
       packages:
         - vim
         - nmap
@@ -55,10 +64,7 @@ modules:
         - file-roller-nautilus
         - papirus-icon-theme
         - ffmpeg
-    replace:
-      - from-repo: rpmfusion-free
-        packages:
-        - x265-libs
+
     remove:
       packages:
         # example: removing firefox (in favor of the flatpak)
