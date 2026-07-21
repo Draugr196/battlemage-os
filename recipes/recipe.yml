@@ -21,18 +21,17 @@ modules:
     repos:
       nonfree: rpmfusion
     group-install:
-      with-optional: true
+      #with-optional: true
       packages:
-        - workstation-product
+        #- workstation-product
         - gnome-desktop
-        - desktop-accessibility
+        #- desktop-accessibility
     replace:
       - from-repo: rpmfusion-free
         allow-erasing: true
         packages:
           - x265-libs
           - x264-libs
-          - libavcodec-freeworld
           - ffmpeg-libs
     install:
       allow-erasing: true
