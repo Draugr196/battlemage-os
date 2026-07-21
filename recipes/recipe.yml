@@ -91,7 +91,8 @@ modules:
       #- Window List
   - type: script
       snippets:
-        - chmod +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/*.js
+        - |
+          chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/
         #- dconf update
       
   - type: default-flatpaks
