@@ -92,7 +92,7 @@ modules:
   - type: script
       snippets:
         - chmod +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/*.js
-        - dconf update
+        #- dconf update
       
   - type: default-flatpaks
     configurations:
@@ -106,6 +106,7 @@ modules:
           - io.github.kolunmi.Bazaar
           - org.libreoffice.LibreOffice
           - com.ranfdev.DistroShelf
+          - com.vysp3r.ProtonPlus
       - scope: user # Also add Flathub user repo, but no user packages
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
