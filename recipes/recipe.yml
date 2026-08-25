@@ -63,9 +63,9 @@ modules:
         - podman-compose
         - papirus-icon-theme
         - ffmpeg
-        - steam
-        - steam-devices
-        - protontricks
+        #- steam
+        #- steam-devices
+        #- protontricks
         - gnome-shell-extension-user-theme
         - yad
         - librewolf
@@ -96,7 +96,8 @@ modules:
       #- Window List
   - type: script
     snippets:
-      - chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/     
+      - chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/
+      - "sed -i 's|^SHELL=/usr/bin/zsh|' /etc/default/useradd"
   - type: default-flatpaks
     configurations:
       - notify: true # Send notification after install/uninstall is finished (true/false)
@@ -109,7 +110,6 @@ modules:
           - io.github.kolunmi.Bazaar
           - org.libreoffice.LibreOffice
           - com.ranfdev.DistroShelf
-          - com.vysp3r.ProtonPlus
       - scope: user # Also add Flathub user repo, but no user packages
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
