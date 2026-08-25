@@ -94,6 +94,7 @@ modules:
       - Launch New Instance
       - Places Status Indicator
       #- Window List
+  - type: gschema-overrides
   - type: script
     snippets:
       - chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/
