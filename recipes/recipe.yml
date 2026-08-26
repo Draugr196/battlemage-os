@@ -59,7 +59,7 @@ modules:
         - vlc
         - nautilus
         - fzf
-        - waydroid
+        #- waydroid
         - podman-compose
         - papirus-icon-theme
         - ffmpeg
@@ -69,6 +69,7 @@ modules:
         - gnome-shell-extension-user-theme
         - yad
         - librewolf
+        - zoxide
 
     remove:
       packages:
@@ -80,6 +81,9 @@ modules:
         - gnome-shell-extension-window-list
         - gnome-boxes
         - gnome-software
+  - type: brew
+    brew-analytics: false
+    auto-update: true
 
   - type: gnome-extensions
     install:
