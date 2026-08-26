@@ -40,9 +40,9 @@ modules:
       packages:
         - vim
         - nmap
-        - zsh
-        - zsh-autosuggestions
-        - zsh-syntax-highlighting
+        #- zsh
+        #- zsh-autosuggestions
+        #- zsh-syntax-highlighting
         - pcsc-lite
         - pcsc-lite-ccid
         - opensc
@@ -70,6 +70,7 @@ modules:
         - yad
         - librewolf
         - zoxide
+        - fish
 
     remove:
       packages:
@@ -102,18 +103,15 @@ modules:
   - type: script
     snippets:
       - chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/
-      - mkdir -p /etc/default && useradd -D -s /usr/bin/zsh
+      - mkdir -p /etc/default && useradd -D -s /usr/bin/fish
   - type: default-flatpaks
     configurations:
       - notify: true # Send notification after install/uninstall is finished (true/false)
         scope: system
         # If no repo information is specified, Flathub will be used by default
         install: # system flatpaks we want all users to have and not remove
-          - com.brave.Browser
-          - io.frama.editide.editide
           - com.github.tchx84.Flatseal
           - io.github.kolunmi.Bazaar
-          - org.libreoffice.LibreOffice
           - com.ranfdev.DistroShelf
       - scope: user # Also add Flathub user repo, but no user packages
 
