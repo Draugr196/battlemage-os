@@ -12,6 +12,13 @@ image-version: 44 # latest is also supported if you want new updates ASAP
 # module configuration, executed in order
 # you can include multiple instances of the same module
 modules:
+  - type: os-release
+    properties:
+      ID: battlemage
+      ID_LIKE: fedora
+      NAME: Battlemage
+      PRETTY_NAME: Battlemage
+      
   - type: files
     files:
       - source: system
@@ -19,6 +26,8 @@ modules:
 
   - type: dnf
     repos:
+      copr:
+        - ublue-os/packages
       nonfree: rpmfusion
       files:
         - https://repo.librewolf.net/librewolf.repo
@@ -71,6 +80,9 @@ modules:
         - librewolf
         - zoxide
         - fish
+        - neovim
+        - python3-neovim
+        - uupd
 
     remove:
       packages:
@@ -82,10 +94,14 @@ modules:
         - gnome-shell-extension-window-list
         - gnome-boxes
         - gnome-software
+        
   - type: brew
     brew-analytics: false
     auto-update: true
-
+  - type: systemd
+    system:
+      enabled:
+        - uupd.timer
   - type: gnome-extensions
     install:
       #- 19
