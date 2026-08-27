@@ -3,3 +3,7 @@ enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'dash-to-panel@jde
 
 [org.gnome.desktop.wm.preferences]
 button-layout='appmenu:minimize,maximize,close'
+theme='Squared'
+
+[org.gnome.desktop.interface]
+gtk-theme='Squared'
