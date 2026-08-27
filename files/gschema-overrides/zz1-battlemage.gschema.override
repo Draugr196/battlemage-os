@@ -7,3 +7,10 @@ theme='Squared'
 
 [org.gnome.desktop.interface]
 gtk-theme='Squared'
+monospace-font-name='Hack Nerd Font Mono 10'
+document-font-name='Hack Nerd Font Mono 11'
+font-name='Hack Nerd Font Mono 11'
+icon-theme='Papirus'
+
+[org.gnome.shell.extensions.user-theme]
+name='Squared'
