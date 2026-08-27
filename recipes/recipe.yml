@@ -122,7 +122,7 @@ modules:
     snippets:
       - chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/
       - mkdir -p /etc/default && useradd -D -s /usr/bin/fish
-      - curl -sL https://raw.githubusercontent.com/PapirusDevelopmentTeam/papirus-folders/master/papirus-folder -o /user/bin/papirus-folders && chmod +x /usr/bin/papirus-folders
+      - wget -qO- https://git.io/papirus-folders-install | sh
       - papirus-folders -C grey --theme Papirus
       - papirus-folders -C grey --theme Papirus-Dark
       
