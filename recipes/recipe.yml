@@ -137,7 +137,6 @@ modules:
       - wget -qO- https://git.io/papirus-folders-install | sh
       - papirus-folders -C grey --theme Papirus
       - papirus-folders -C grey --theme Papirus-Dark
-      #- squared-librewolf.sh
       
   - type: default-flatpaks
     configurations:
