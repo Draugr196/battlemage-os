@@ -65,8 +65,6 @@ modules:
         - gnome-tweaks
         - gnome-extensions-app
         - papirus-icon-theme
-        - veeam
-        - kmod-blksnap
         - fastfetch
         - snapshot
         - vlc
