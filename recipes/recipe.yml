@@ -3,7 +3,7 @@
 # image will be published to ghcr.io/<user>/<name>
 name: battlemage
 # description will be included in the image's metadata
-description: This is my personal OS image.
+description: 
 
 # the base image to build on top of (FROM) and the version tag to use
 base-image: ghcr.io/ublue-os/silverblue-main
@@ -50,12 +50,10 @@ modules:
       packages:
         - vim
         - nmap
-        #- zsh
-        #- zsh-autosuggestions
-        #- zsh-syntax-highlighting
         - pcsc-lite
         - pcsc-lite-ccid
         - opensc
+        - borgbackup
         - pkcs11-provider
         - htop
         - btop
@@ -70,13 +68,13 @@ modules:
         - vlc
         - nautilus
         - fzf
-        #- waydroid
+        - waydroid
         - podman-compose
         - papirus-icon-theme
         - ffmpeg
-        #- steam
-        #- steam-devices
-        #- protontricks
+        - steam
+        - steam-devices
+        - protontricks
         - gnome-shell-extension-user-theme
         - yad
         - tayga
@@ -146,6 +144,7 @@ modules:
       - papirus-folders -C grey --theme Papirus
       - papirus-folders -C grey --theme Papirus-Dark
       - rm -f /usr/share/plymouth/themes/spinner/watermark.png
+      - update-crypto-policies --set FUTURE
       
   - type: default-flatpaks
     configurations:
