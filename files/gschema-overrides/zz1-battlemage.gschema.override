@@ -1,5 +1,6 @@
 [org.gnome.shell]
 enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'dash-to-panel@jderose9.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'caffeine@patapon.info', 'ding@rastersoft.com']
+favorite-apps=['librewolf.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.TestEditor.desktop', 'io.github.kolunmi.Bazaar.desktop', 'com.ranfdev.DistroShelf.desktop']
 
 [org.gnome.desktop.wm.preferences]
 button-layout='appmenu:minimize,maximize,close'
@@ -18,3 +19,7 @@ name='Squared'
 
 [org.gnome.login-screen]
 logo=''
+
+[org.gnome.desktop.background]
+picture-uri='/usr/share/backgrounds/battlemage.png'
+picture.uri-dark='/usr/share/backgrounds/battlemage.png'
