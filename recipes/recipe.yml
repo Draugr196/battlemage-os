@@ -87,6 +87,10 @@ modules:
         - python3-neovim
         - uupd
         - tailscale
+        - nfs-utils
+        - samba-client
+        - samba-common
+        - cifs-utils
 
     remove:
       packages:
@@ -107,7 +111,11 @@ modules:
     system:
       enabled:
         - uupd.timer
+        - fwupd-refresh.timer
         - auditd.service
+        - aide-check.timer
+        - aide-init.service
+        - hardening-firstboot.service
       masked:
         - kdump.service
         - systemd-coredump.socket

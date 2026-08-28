@@ -1,0 +1,12 @@
+kargs = [
+  "slab_nomerge",
+  "page_alloc.shuffle=1",
+  "randomize_kstack_offset=on",
+  "init_on_alloc=1",
+  "vsyscall=none",
+  "efi=disable_early_pci_dma",
+  "iommu=pt",
+  "kvm.nx_huge_pages=force",
+  "audit=1",
+  "audit_backlog_limit=8192",
+]

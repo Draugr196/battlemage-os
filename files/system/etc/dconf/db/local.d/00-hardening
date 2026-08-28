@@ -1,0 +1,16 @@
+[org/gnome/desktop/privacy]
+usb-protection=true
+usb-protection-level='lockscreen'
+remember-recent-files=false
+remove-old-temp-files=true
+report-technical-problems=false
+
+[org/gnome/desktop/screensaver]
+lock-enabled=true
+lock-delay=uint32 0
+
+[org/gnome/desktop/session]
+idle-delay=uint32 600
+
+[org/gnome/desktop/search-providers]
+disable-external=true

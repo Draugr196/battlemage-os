@@ -1,0 +1,15 @@
+[Unit]
+Description=One-time runtime hardening (SELinux booleans, Flatpak overrides)
+ConditionPathExists=!/var/lib/hardening-firstboot.done
+After=local-fs.target
+
+[Service]
+Type=oneshot
+
+ExecStart=/usr/sbin/setsebool -P selinuxuser_execstack=0 selinuxuser_execheap=0
+
+ExecStart=/usr/bin/flatpak override --system --nofilesystem=~/.ssh --nofilesystem=~/.gnupg
+ExecStart=/bin/touch /var/lib/hardening-firstboot.done
+
+[Install]
+WantedBy=multi-user.target
