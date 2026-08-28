@@ -65,6 +65,8 @@ modules:
         - gnome-tweaks
         - gnome-extensions-app
         - papirus-icon-theme
+        - veeam
+        - kmod-blksnap
         - fastfetch
         - snapshot
         - vlc
@@ -114,7 +116,7 @@ modules:
         - rpcbind.service
         #- rpcbind.socket
         - debug-shell.service
-        - ctrl-alt-del.target
+        #- ctrl-alt-del.target
 
   - type: gnome-extensions
     install:
