@@ -144,7 +144,6 @@ modules:
       - papirus-folders -C grey --theme Papirus
       - papirus-folders -C grey --theme Papirus-Dark
       - rm -f /usr/share/plymouth/themes/spinner/watermark.png
-      - update-crypto-policies --set FUTURE
       
   - type: default-flatpaks
     configurations:
