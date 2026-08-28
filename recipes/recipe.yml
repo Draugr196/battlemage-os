@@ -112,7 +112,7 @@ modules:
         - kdump.service
         - systemd-coredump.socket
         - rpcbind.service
-        - rpcbind.socket
+        #- rpcbind.socket
         - debug-shell.service
         - ctrl-alt-del.target
 
