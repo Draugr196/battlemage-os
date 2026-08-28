@@ -31,6 +31,7 @@ modules:
       nonfree: rpmfusion
       files:
         - https://repo.librewolf.net/librewolf.repo
+        - https://pkgs.tailscale.com/stable/fedora/tailscale.repo
     group-install:
       #with-optional: true
       packages:
@@ -85,6 +86,7 @@ modules:
         - neovim
         - python3-neovim
         - uupd
+        - tailscale
 
     remove:
       packages:
@@ -100,10 +102,20 @@ modules:
   - type: brew
     brew-analytics: false
     auto-update: true
+
   - type: systemd
     system:
       enabled:
         - uupd.timer
+        - auditd.service
+      masked:
+        - kdump.service
+        - systemd-coredump.socket
+        - rpcbind.service
+        - rpcbind.socket
+        - debug-shell.service
+        - ctrl-alt-del.target
+
   - type: gnome-extensions
     install:
       #- 19
@@ -125,6 +137,7 @@ modules:
       - wget -qO- https://git.io/papirus-folders-install | sh
       - papirus-folders -C grey --theme Papirus
       - papirus-folders -C grey --theme Papirus-Dark
+      - squared-librewolf.sh
       
   - type: default-flatpaks
     configurations:
