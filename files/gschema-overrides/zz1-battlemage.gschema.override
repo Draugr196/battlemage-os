@@ -22,4 +22,4 @@ logo=''
 
 [org.gnome.desktop.background]
 picture-uri='/usr/share/backgrounds/battlemage.png'
-picture.uri-dark='/usr/share/backgrounds/battlemage.png'
+picture-uri-dark='/usr/share/backgrounds/battlemage.png'
