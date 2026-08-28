@@ -1,9 +1,9 @@
 # battlemage-os &nbsp; [![bluebuild build badge](https://github.com/draugr196/battlemage-os/actions/workflows/build.yml/badge.svg)](https://github.com/draugr196/battlemage-os/actions/workflows/build.yml)
 
-## Installation
-
-# Installation ISO
+## Installation ISO
 Premade installation ISO can be downloaded from: https://drive.proton.me/urls/5NXCQMXPTR#hc8TIqrwEtQp
+
+## Rebase on Existing System
 
 > [!WARNING]  
 > [This is an experimental feature](https://www.fedoraproject.org/wiki/Changes/OstreeNativeContainerStable), try at your own discretion.
