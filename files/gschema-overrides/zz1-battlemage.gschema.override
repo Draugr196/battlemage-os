@@ -15,3 +15,6 @@ color-scheme='prefer-dark'
 
 [org.gnome.shell.extensions.user-theme]
 name='Squared'
+
+[org.gnome.login-screen]
+logo=''

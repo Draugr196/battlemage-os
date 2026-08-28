@@ -145,6 +145,7 @@ modules:
       - wget -qO- https://git.io/papirus-folders-install | sh
       - papirus-folders -C grey --theme Papirus
       - papirus-folders -C grey --theme Papirus-Dark
+      - rm -f /usr/share/plymouth/themes/spinner/watermark.png
       
   - type: default-flatpaks
     configurations:
@@ -156,5 +157,7 @@ modules:
           - io.github.kolunmi.Bazaar
           - com.ranfdev.DistroShelf
       - scope: user # Also add Flathub user repo, but no user packages
+
+  - type: initramfs
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
