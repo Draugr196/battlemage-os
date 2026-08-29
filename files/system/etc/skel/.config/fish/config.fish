@@ -9,6 +9,8 @@ if status is-interactive
 
     set -gx FZF_DEFAULT_OPTS "--preview 'bat --style=numbers --color=always --line-range :500 {}'"
     set -gx FZF_ALT_C_OPTS "--preview 'tree -C {} | head --200'"
+    
+    set -g fish_greeting ""
 
     zoxide init fish | source
     fzf --fish | source

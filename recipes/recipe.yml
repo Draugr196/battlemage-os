@@ -62,6 +62,8 @@ modules:
         - eza
         - gnome-tweaks
         - gnome-extensions-app
+        - file-roller
+        - file-roller-nautilus
         - papirus-icon-theme
         - fastfetch
         - snapshot
