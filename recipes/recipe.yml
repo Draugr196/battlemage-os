@@ -91,6 +91,7 @@ modules:
         - samba-client
         - samba-common
         - cifs-utils
+        - bat
 
     remove:
       packages:
