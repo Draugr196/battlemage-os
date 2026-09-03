@@ -76,6 +76,10 @@ modules:
         - ffmpeg
         - steam
         - steam-devices
+        - clamav
+        - clamav-freshclam
+        - clamd
+        - clamtk
         - protontricks
         - gnome-shell-extension-user-theme
         - yad
