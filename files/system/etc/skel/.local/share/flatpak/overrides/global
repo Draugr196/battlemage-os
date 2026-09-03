@@ -1,0 +1,5 @@
+[Context]
+filesystems=xdg-data/icons:ro;xdg-data/themes:ro;~/.local/share/themes:ro;
+
+[Environment]
+GTK_THEME=Squared
