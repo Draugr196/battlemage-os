@@ -1,7 +1,11 @@
 # battlemage-os &nbsp; [![bluebuild build badge](https://github.com/draugr196/battlemage-os/actions/workflows/build.yml/badge.svg)](https://github.com/draugr196/battlemage-os/actions/workflows/build.yml)
 
 ## Installation ISO
-Premade installation ISO can be downloaded from: https://drive.proton.me/urls/5NXCQMXPTR#hc8TIqrwEtQp
+Premade installation ISO can be downloaded here 
+
+Base: https://drive.proton.me/urls/5NXCQMXPTR#hc8TIqrwEtQp
+
+Nvidia: https://drive.proton.me/urls/RE33D6BZS4#moChtrUD3U3D
 
 ## Rebase on Existing System
 
@@ -12,7 +16,7 @@ To rebase an existing atomic Fedora installation to the latest build:
 
 - First rebase to the unsigned image, to get the proper signing keys and policies installed:
   ```
-  rpm-ostree rebase ostree-unverified-registry:ghcr.io/draugr196/battlemage-os:latest
+  rpm-ostree rebase ostree-unverified-registry:ghcr.io/draugr196/battlemage:latest
   ```
 - Reboot to complete the rebase:
   ```
@@ -20,7 +24,7 @@ To rebase an existing atomic Fedora installation to the latest build:
   ```
 - Then rebase to the signed image, like so:
   ```
-  rpm-ostree rebase ostree-image-signed:docker://ghcr.io/draugr196/battlemage-os:latest
+  rpm-ostree rebase ostree-image-signed:docker://ghcr.io/draugr196/battlemage:latest
   ```
 - Reboot again to complete the installation
   ```
