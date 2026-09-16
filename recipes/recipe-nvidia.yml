@@ -15,6 +15,20 @@ modules:
 
   - from-file: common.yml
 
+  - type: akmods
+    base: main
+    nvidia-driver: nvidia-open
+    install: []
+
+
+  - type: dnf
+    repos:
+      files:
+        - https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo
+    install:
+      packages:
+        - nvidia-container-toolkit
+
   - type: initramfs
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
