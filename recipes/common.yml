@@ -15,13 +15,14 @@ modules:
 
   - type: dnf
     repos:
+      nonfree: rpmfusion
       copr:
         - ublue-os/packages
       files:
         - https://repo.librewolf.net/librewolf.repo
         - https://pkgs.tailscale.com/stable/fedora/tailscale.repo
-        - https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-%OS_VERSION%.noarch.rpm
-        - https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-%OS_VERSION%.noarch.rpm
+        #- https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-%OS_VERSION%.noarch.rpm
+        #- https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-%OS_VERSION%.noarch.rpm
     group-install:
       #with-optional: true
       packages:
