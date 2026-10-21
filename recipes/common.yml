@@ -68,6 +68,7 @@ modules:
         - ffmpeg
         - steam
         - steam-devices
+        - screen
         - clamav
         - clamav-freshclam
         - clamd
