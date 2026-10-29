@@ -30,6 +30,7 @@ jobs:
           - recipe.yml
           - recipe-nvidia.yml
           - recipe-nvidia-webtop.yml
+          - recipe-webtop.yml
     steps:
       # the build is fully handled by the reusable github action
       - name: Build Custom Image
