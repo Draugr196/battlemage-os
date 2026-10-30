@@ -1,0 +1,26 @@
+[Unit]
+Description=Selkies stream of the GNOME session
+ConditionUser=selkies
+PartOf=graphical-session.target
+After=graphical-session.target xdg-desktop-portal.service pipewire.service wireplumber.service
+Wants=xdg-desktop-portal.service pipewire.service
+
+[Service]
+Environment=SELKIES_MODE=websockets
+Environment=SELKIES_ENABLE_DUAL_MODE=true
+Environment=SELKIES_WEBRTC_UDP_MUX_PORT=8445
+Environment=SELKIES_WEBRTC_TCP_MUX_PORT=8445
+EnvironmentFile=/usr/share/selkies/defaults.env
+EnvironmentFile=/etc/selkies/selkies.env
+EnvironmentFile=-/etc/selkies/local.env
+ExecStart=/usr/bin/selkies \
+    --wayland=true \
+    --wayland-host-display=wayland-0 \
+    --port=8080 \
+    --basic-auth-user=${SELKIES_USER} \
+    --basic-auth-password=${SELKIES_PASS}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

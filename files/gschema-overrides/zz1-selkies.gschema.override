@@ -1,0 +1,14 @@
+[org.gnome.desktop.screensaver]
+lock-enabled=false
+idle-activation-enabled=false
+
+[org.gnome.desktop.session]
+idle-delay=uint32 0
+
+[org.gnome.settings-daemon.plugins.power]
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+power-button-action='nothing'
+
+[org.gnome.desktop.notifications]
+show-banners=false

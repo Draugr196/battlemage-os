@@ -1,0 +1,14 @@
+[Unit]
+Description=Create the Selkies appliance user and credentials
+ConditionPathExists=|!/var/lib/selkies/.firstboot-done
+ConditionPathExists=|!/etc/selkies/tls/cert.pem
+After=systemd-tmpfiles-setup.service systemd-sysusers.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/selkies-firstboot
+
+[Install]
+WantedBy=multi-user.target

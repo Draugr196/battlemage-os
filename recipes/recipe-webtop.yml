@@ -14,10 +14,35 @@ image-version: 44 # latest is also supported if you want new updates ASAP
 modules:
 
   - from-file: common.yml
+  - type: files
+    files:
+      - source: webtop
+        destination: /
   - type: dnf
     install:
       packages:
+	- caddy
+	- openssl
         - https://github.com/selkies-project/selkies/releases/download/2.1.0/selkies-2.1.0-fc-x86_64.rpm
+  - type: script
+    scripts:
+      - selkies-firewall.sh
+  - type: gschema-overrides
+    include:
+      - zz1-selkies.gschema.override
+  - type: systemd
+    system:
+      enabled:
+        - selkies-firstboot.service
+        - caddy.service
+      masked:
+        - sleep.target
+        - suspend.target
+        - hibernate.target
+        - hybrid-sleep.target
+    user:
+      enabled:
+        - selkies.service
 
   - type: initramfs
 
