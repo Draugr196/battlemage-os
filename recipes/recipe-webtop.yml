@@ -21,8 +21,8 @@ modules:
   - type: dnf
     install:
       packages:
-	- caddy
-	- openssl
+        - caddy
+        - openssl
         - https://github.com/selkies-project/selkies/releases/download/2.1.0/selkies-2.1.0-fc-x86_64.rpm
   - type: script
     scripts:
