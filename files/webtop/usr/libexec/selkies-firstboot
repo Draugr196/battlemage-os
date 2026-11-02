@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
+# Runs once, before GDM. Creates a regular (uid >= 1000) user so GDM
+# will autologin into a full GNOME session, and generates the web password.
 set -euo pipefail
 
 USER_NAME=selkies
 
+# wheel = sudo. The account password is set below to the web password,
+# so whoever can log into the stream can also administer the box.
 if ! id "$USER_NAME" &>/dev/null; then
   useradd -m -c "Selkies appliance" -G wheel "$USER_NAME"
-  passwd -l "$USER_NAME"
 else
   usermod -aG wheel "$USER_NAME"
 fi
@@ -19,11 +22,54 @@ if [[ ! -f /etc/selkies/selkies.env ]]; then
   echo "Selkies web login: ${USER_NAME} / (see /etc/selkies/selkies.env)"
 fi
 
+# Give the account a usable password (the web password) if it has none or
+# is locked. Never overwrites a password you've since changed with `passwd`.
+ACCT_STATE="$(passwd -S "$USER_NAME" 2>/dev/null | awk '{print $2}')"
+if [[ "$ACCT_STATE" == L* || "$ACCT_STATE" == NP ]]; then
+  # shellcheck disable=SC1091
+  . /etc/selkies/selkies.env
+  printf '%s:%s\n' "$USER_NAME" "$SELKIES_PASS" | chpasswd
+  passwd -u "$USER_NAME" >/dev/null 2>&1 || true
+  echo "Set ${USER_NAME}'s login/sudo password to the web password"
+fi
+
+# Self-signed TLS cert for Caddy, valid for this machine's names and IPs.
+# Replace /etc/selkies/tls/{cert,key}.pem with a real cert any time.
 install -d -m 0750 -o root -g caddy /etc/selkies/tls
 if [[ ! -f /etc/selkies/tls/cert.pem ]]; then
-  HOST="$(hostnamectl --static 2>/dev/null || hostname)"
-  SAN="DNS:${HOST},DNS:${HOST}.local,DNS:localhost,IP:127.0.0.1"
-  for ip in $(hostname -I 2>/dev/null); do SAN+=",IP:${ip}"; done
+  # Fedora often has no static hostname, and hostnamectl then prints an
+  # empty line (successfully), so try each source and keep the first valid one.
+  DNS_RE='^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$'
+  HOST=""
+  for cand in "$(hostnamectl --static 2>/dev/null)" \
+              "$(hostnamectl --transient 2>/dev/null)" \
+              "$(cat /etc/hostname 2>/dev/null)" \
+              "$(uname -n)"; do
+    cand="$(printf '%s' "$cand" | tr -d '[:space:]')"
+    if [[ -n "$cand" && "$cand" =~ $DNS_RE ]]; then HOST="$cand"; break; fi
+  done
+  : "${HOST:=selkies}"
+
+  # Build the subjectAltName list, skipping blanks and duplicates
+  declare -A SEEN=()
+  SANS=()
+  add_san() { [[ -n "$2" && -z "${SEEN[$1:$2]:-}" ]] && SEEN[$1:$2]=1 && SANS+=("$1:$2") || true; }
+
+  add_san DNS "$HOST"
+  [[ "$HOST" != *.* && "$HOST" != localhost ]] && add_san DNS "${HOST}.local"
+  add_san DNS localhost
+  add_san IP 127.0.0.1
+  add_san IP ::1
+  # Global addresses only (no link-local, which openssl rejects with a %scope).
+  # First boot may run before the network is up; then only the names above apply.
+  while read -r ip; do
+    if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$ip" =~ ^[0-9A-Fa-f:]+$ ]]; then
+      add_san IP "$ip"
+    fi
+  done < <(ip -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
+
+  SAN="$(IFS=,; echo "${SANS[*]}")"
+  echo "Generating TLS cert for: ${SAN}"
   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
     -nodes -days 3650 -subj "/CN=${HOST}" -addext "subjectAltName=${SAN}" \
     -keyout /etc/selkies/tls/key.pem -out /etc/selkies/tls/cert.pem
