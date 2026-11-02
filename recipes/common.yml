@@ -48,6 +48,7 @@ modules:
         - pkcs11-provider
         - htop
         - btop
+        - totem
         - tmux
         - mc
         - eza

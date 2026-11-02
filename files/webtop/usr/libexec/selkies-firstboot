@@ -4,10 +4,10 @@ set -euo pipefail
 USER_NAME=selkies
 
 if ! id "$USER_NAME" &>/dev/null; then
-  useradd -m -c "Selkies appliance" -G video,render,input "$USER_NAME"
+  useradd -m -c "Selkies appliance" -G wheel "$USER_NAME"
   passwd -l "$USER_NAME"
 else
-  usermod -aG video,render,input "$USER_NAME"
+  usermod -aG wheel "$USER_NAME"
 fi
 
 install -d -m 0750 -o root -g "$USER_NAME" /etc/selkies
