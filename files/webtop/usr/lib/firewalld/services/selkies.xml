@@ -3,6 +3,7 @@
   <short>Selkies</short>
   <description>Selkies web desktops: HTTPS (Caddy) for the page and signaling, and one WebRTC media port per user (8445 + uid - 1000, for uids 1000-1099) over UDP with a TCP fallback.</description>
   <port protocol="tcp" port="443"/>
+  <port protocol="tcp" port="22"/>
   <port protocol="udp" port="8445-8544"/>
   <port protocol="tcp" port="8445-8544"/>
 </service>
