@@ -33,6 +33,7 @@ modules:
   - type: systemd
     system:
       enabled:
+        - sshd.service
         - selkies-firstboot.service
         - selkies-firewall.service   
         - selkies-pam-auth.service
