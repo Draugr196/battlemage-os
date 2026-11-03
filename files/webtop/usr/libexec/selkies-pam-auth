@@ -21,8 +21,9 @@ because pam_unix can only check other users' passwords as root, and to start
 the units above.
 
 Config (optional), /etc/selkies/auth.env:
-  SELKIES_AUTH_GROUP=selkies-users  anyone in this group may log in (default)
-  SELKIES_AUTH_USERS=alice,bob      plus these users
+  SELKIES_AUTH_GROUP=selkies-users,wheel   members of these groups may log in
+                                           (default; comma-separated)
+  SELKIES_AUTH_USERS=alice,bob             plus these users
 """
 
 import base64
@@ -56,7 +57,7 @@ FAIL_WINDOW = 300        # ...counted over this many seconds
 LOCKOUT = 60             # seconds locked out
 FAIL_DELAY = 1.5         # pause on every failure
 
-DEFAULT_GROUP = "selkies-users"
+DEFAULT_GROUP = "selkies-users,wheel"
 START_WAIT = int(os.environ.get("SELKIES_AUTH_START_WAIT", "40"))  # seconds to hold a request while a desktop starts
 RUNTIME_DIR = os.environ.get("SELKIES_AUTH_RUNTIME_DIR", "/run/user")  # where users' Selkies sockets live
 # Safe for unit instance names and socket paths; no leading dot or dash
@@ -187,10 +188,10 @@ def user_allowed(username: str) -> bool:
         return False
     cfg = read_config()  # re-read each time so edits apply without a restart
     users = {u.strip() for u in cfg.get("SELKIES_AUTH_USERS", "").split(",") if u.strip()}
-    group = cfg.get("SELKIES_AUTH_GROUP", DEFAULT_GROUP).strip()
+    groups = [g.strip() for g in cfg.get("SELKIES_AUTH_GROUP", DEFAULT_GROUP).split(",") if g.strip()]
     if username in users:
         return True
-    if group:
+    for group in groups:
         try:
             g = grp.getgrnam(group)
             if username in g.gr_mem:
@@ -198,7 +199,7 @@ def user_allowed(username: str) -> bool:
             if pwd.getpwnam(username).pw_gid == g.gr_gid:
                 return True
         except KeyError:
-            pass
+            continue
     return False
 
 

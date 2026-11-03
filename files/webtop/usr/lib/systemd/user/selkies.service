@@ -1,7 +1,9 @@
 [Unit]
 Description=Selkies stream of this user's GNOME session
-# Only for web desktop users (not GDM's own login-screen session)
-ConditionGroup=selkies-users
+# Only for web desktop users (not GDM's own login-screen session).
+# The | makes these "either group" rather than "both".
+ConditionGroup=|selkies-users
+ConditionGroup=|wheel
 PartOf=graphical-session.target
 After=graphical-session.target xdg-desktop-portal.service pipewire.service wireplumber.service selkies-consent.service
 Wants=xdg-desktop-portal.service pipewire.service

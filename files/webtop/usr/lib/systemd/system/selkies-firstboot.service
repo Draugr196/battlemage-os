@@ -1,9 +1,7 @@
 [Unit]
-Description=Create the Selkies appliance user and credentials
-ConditionPathExists=|!/var/lib/selkies/.firstboot-done
-ConditionPathExists=|!/etc/selkies/tls/cert.pem
+Description=Selkies appliance first boot (TLS cert)
+ConditionPathExists=!/var/lib/selkies/.firstboot-done
 After=systemd-tmpfiles-setup.service systemd-sysusers.service
-Before=display-manager.service
 
 [Service]
 Type=oneshot
