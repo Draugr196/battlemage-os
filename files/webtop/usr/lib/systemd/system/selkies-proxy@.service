@@ -1,0 +1,21 @@
+[Unit]
+Description=Selkies proxy into %i's desktop
+Requires=selkies-proxy@%i.socket
+After=selkies-proxy@%i.socket
+
+[Service]
+# Runs as the user, so it can only reach that user's own Selkies socket
+# (/run/user/<uid> is private to them).
+User=%i
+ExecStart=/usr/libexec/selkies-proxy
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes

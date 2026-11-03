@@ -1,0 +1,442 @@
+#!/usr/bin/python3 -I
+"""
+selkies-pam-auth: HTTP Basic auth checked against PAM, for Caddy's forward_auth.
+
+Caddy sends each request's headers here first. We answer:
+  200 + X-Remote-User  the credentials pass PAM (auth + account), the user is
+                       allowed in, and their desktop is up (started on demand)
+  401 + WWW-Authenticate: Basic   bad or missing credentials (Caddy relays it)
+  503 + auto-refresh page         the user's desktop is still starting
+
+Each user gets their own desktop. On a user's first request we start:
+  selkies-proxy@<user>.socket          root-owned /run/selkies/<user>.sock that
+                                       Caddy connects to; it hands connections
+                                       to a proxy running *as that user*
+  gnome-headless-session@<user>.service   GDM's headless GNOME session, whose
+                                       selkies.service listens on
+                                       /run/user/<uid>/selkies.sock
+
+Listens only on a Unix socket that the caddy group can reach. Runs as root
+because pam_unix can only check other users' passwords as root, and to start
+the units above.
+
+Config (optional), /etc/selkies/auth.env:
+  SELKIES_AUTH_GROUP=selkies-users  anyone in this group may log in (default)
+  SELKIES_AUTH_USERS=alice,bob      plus these users
+"""
+
+import base64
+import grp
+import hashlib
+import hmac
+import os
+import pwd
+import re
+import secrets
+import socket
+import socketserver
+import subprocess
+import sys
+import threading
+import time
+from collections import defaultdict
+from ctypes import (CDLL, CFUNCTYPE, POINTER, Structure, c_char_p, c_int,
+                    c_size_t, c_void_p, cast, sizeof)
+from ctypes.util import find_library
+from http.server import BaseHTTPRequestHandler
+
+SOCKET = os.environ.get("SELKIES_AUTH_SOCKET", "/run/selkies-auth/auth.sock")
+PAM_SERVICE = os.environ.get("SELKIES_AUTH_PAM_SERVICE", "selkies").encode()
+CONFIG = "/etc/selkies/auth.env"
+REALM = "Selkies"
+
+CACHE_TTL = 300          # seconds a successful login is remembered
+FAIL_LIMIT = 5           # failures per client before a lockout
+FAIL_WINDOW = 300        # ...counted over this many seconds
+LOCKOUT = 60             # seconds locked out
+FAIL_DELAY = 1.5         # pause on every failure
+
+DEFAULT_GROUP = "selkies-users"
+START_WAIT = int(os.environ.get("SELKIES_AUTH_START_WAIT", "40"))  # seconds to hold a request while a desktop starts
+RUNTIME_DIR = os.environ.get("SELKIES_AUTH_RUNTIME_DIR", "/run/user")  # where users' Selkies sockets live
+# Safe for unit instance names and socket paths; no leading dot or dash
+USERNAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,31}$")
+
+
+def log(msg):
+    print(f"selkies-pam-auth: {msg}", file=sys.stderr, flush=True)
+
+
+# --------------------------------------------------------------------------
+# PAM through ctypes (no extra packages needed)
+# --------------------------------------------------------------------------
+
+PAM_PROMPT_ECHO_OFF = 1
+PAM_PROMPT_ECHO_ON = 2
+PAM_SUCCESS = 0
+
+
+class PamHandle(Structure):
+    _fields_ = [("handle", c_void_p)]
+
+
+class PamMessage(Structure):
+    _fields_ = [("msg_style", c_int), ("msg", c_char_p)]
+
+
+class PamResponse(Structure):
+    _fields_ = [("resp", c_void_p), ("resp_retcode", c_int)]
+
+
+CONV_FUNC = CFUNCTYPE(c_int, c_int, POINTER(POINTER(PamMessage)),
+                      POINTER(POINTER(PamResponse)), c_void_p)
+
+
+class PamConv(Structure):
+    _fields_ = [("conv", CONV_FUNC), ("appdata_ptr", c_void_p)]
+
+
+_libpam = CDLL(find_library("pam"))
+_libc = CDLL(find_library("c"))
+
+_pam_start = _libpam.pam_start
+_pam_start.restype = c_int
+_pam_start.argtypes = [c_char_p, c_char_p, POINTER(PamConv), POINTER(PamHandle)]
+
+_pam_authenticate = _libpam.pam_authenticate
+_pam_authenticate.restype = c_int
+_pam_authenticate.argtypes = [PamHandle, c_int]
+
+_pam_acct_mgmt = _libpam.pam_acct_mgmt
+_pam_acct_mgmt.restype = c_int
+_pam_acct_mgmt.argtypes = [PamHandle, c_int]
+
+_pam_end = _libpam.pam_end
+_pam_end.restype = c_int
+_pam_end.argtypes = [PamHandle, c_int]
+
+_pam_strerror = _libpam.pam_strerror
+_pam_strerror.restype = c_char_p
+_pam_strerror.argtypes = [PamHandle, c_int]
+
+# PAM frees the responses, so they must come from malloc
+_calloc = _libc.calloc
+_calloc.restype = c_void_p
+_calloc.argtypes = [c_size_t, c_size_t]
+_strdup = _libc.strdup
+_strdup.restype = c_void_p
+_strdup.argtypes = [c_char_p]
+
+
+def pam_check(username: str, password: str) -> tuple[bool, str]:
+    user_b = username.encode()
+    pass_b = password.encode()
+
+    @CONV_FUNC
+    def conv(n_messages, messages, p_response, _appdata):
+        addr = _calloc(n_messages, sizeof(PamResponse))
+        if not addr:
+            return 20  # PAM_BUF_ERR
+        responses = cast(addr, POINTER(PamResponse))
+        p_response[0] = responses
+        for i in range(n_messages):
+            style = messages[i].contents.msg_style
+            if style == PAM_PROMPT_ECHO_OFF:
+                responses[i].resp = _strdup(pass_b)
+            elif style == PAM_PROMPT_ECHO_ON:
+                responses[i].resp = _strdup(user_b)
+            responses[i].resp_retcode = 0
+        return PAM_SUCCESS
+
+    handle = PamHandle()
+    pconv = PamConv(conv, 0)
+    rc = _pam_start(PAM_SERVICE, user_b, pconv, handle)
+    if rc != PAM_SUCCESS:
+        return False, f"pam_start failed ({rc})"
+    try:
+        rc = _pam_authenticate(handle, 0)
+        if rc == PAM_SUCCESS:
+            # Expired, disabled or locked accounts fail here
+            rc = _pam_acct_mgmt(handle, 0)
+        reason = (_pam_strerror(handle, rc) or b"").decode(errors="replace")
+        return rc == PAM_SUCCESS, reason
+    finally:
+        _pam_end(handle, rc)
+
+
+# --------------------------------------------------------------------------
+# Who may use the session
+# --------------------------------------------------------------------------
+
+def read_config():
+    cfg = {}
+    try:
+        with open(CONFIG) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    cfg[k.strip()] = v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return cfg
+
+
+def user_allowed(username: str) -> bool:
+    if not USERNAME_RE.match(username):
+        return False
+    cfg = read_config()  # re-read each time so edits apply without a restart
+    users = {u.strip() for u in cfg.get("SELKIES_AUTH_USERS", "").split(",") if u.strip()}
+    group = cfg.get("SELKIES_AUTH_GROUP", DEFAULT_GROUP).strip()
+    if username in users:
+        return True
+    if group:
+        try:
+            g = grp.getgrnam(group)
+            if username in g.gr_mem:
+                return True
+            if pwd.getpwnam(username).pw_gid == g.gr_gid:
+                return True
+        except KeyError:
+            pass
+    return False
+
+
+# --------------------------------------------------------------------------
+# Starting a user's desktop on demand
+# --------------------------------------------------------------------------
+
+_start_locks = defaultdict(threading.Lock)
+
+
+def systemctl(*args):
+    try:
+        r = subprocess.run(["systemctl", *args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log(f"systemctl {' '.join(args)}: {e}")
+        return False
+    if r.returncode != 0:
+        log(f"systemctl {' '.join(args)}: {(r.stderr or r.stdout).strip()}")
+    return r.returncode == 0
+
+
+def loginctl_value(*args):
+    try:
+        r = subprocess.run(["loginctl", *args, "--value"], capture_output=True,
+                           text=True, timeout=10)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def has_local_graphical_session(uid):
+    """A graphical session on a real seat. GDM won't also start a headless
+    one for the same user, so we use whatever that session runs instead."""
+    for sid in loginctl_value("show-user", str(uid), "-p", "Sessions").split():
+        stype = loginctl_value("show-session", sid, "-p", "Type")
+        seat = loginctl_value("show-session", sid, "-p", "Seat")
+        state = loginctl_value("show-session", sid, "-p", "State")
+        if stype in ("wayland", "x11") and seat and state != "closing":
+            return True
+    return False
+
+
+def selkies_live(uid):
+    path = os.path.join(RUNTIME_DIR, str(uid), "selkies.sock")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        try:
+            s.connect(path)
+            return True
+        except OSError:
+            return False
+
+
+def ensure_desktop(username):
+    """Make sure the user's desktop and front socket are up. Returns True when
+    Selkies is answering, False if it didn't come up within START_WAIT."""
+    uid = pwd.getpwnam(username).pw_uid
+    if selkies_live(uid) and os.path.exists(f"/run/selkies/{username}.sock"):
+        return True
+    with _start_locks[username]:  # one starter per user; others wait here
+        systemctl("start", f"selkies-proxy@{username}.socket")
+        if selkies_live(uid):
+            return True
+        if has_local_graphical_session(uid):
+            log(f"{username} has a local session; waiting for its Selkies")
+        else:
+            log(f"starting a headless desktop for {username}")
+            systemctl("start", "--no-block", f"gnome-headless-session@{username}.service")
+        deadline = time.monotonic() + START_WAIT
+        while time.monotonic() < deadline:
+            if selkies_live(uid):
+                log(f"{username}'s desktop is up")
+                return True
+            time.sleep(0.5)
+    return False
+
+
+# --------------------------------------------------------------------------
+# Caching and brute-force throttling
+# --------------------------------------------------------------------------
+
+_lock = threading.Lock()
+_salt = secrets.token_bytes(32)
+_cache = {}      # digest -> (username, expiry)
+_fails = {}      # client -> [timestamps]
+_locked = {}     # client -> unlock time
+
+
+def _digest(header_value: str) -> bytes:
+    return hmac.new(_salt, header_value.encode(), hashlib.sha256).digest()
+
+
+def cached_user(header_value):
+    d = _digest(header_value)
+    with _lock:
+        hit = _cache.get(d)
+        if hit and hit[1] > time.monotonic():
+            return hit[0]
+        _cache.pop(d, None)
+    return None
+
+
+def remember(header_value, username):
+    with _lock:
+        _cache[_digest(header_value)] = (username, time.monotonic() + CACHE_TTL)
+
+
+def locked_out(client):
+    with _lock:
+        until = _locked.get(client, 0)
+        return until > time.monotonic()
+
+
+def record_failure(client):
+    now = time.monotonic()
+    with _lock:
+        recent = [t for t in _fails.get(client, []) if now - t < FAIL_WINDOW]
+        recent.append(now)
+        _fails[client] = recent
+        if len(recent) >= FAIL_LIMIT:
+            _locked[client] = now + LOCKOUT
+            _fails[client] = []
+            log(f"locking out {client} for {LOCKOUT}s after {FAIL_LIMIT} failures")
+
+
+# --------------------------------------------------------------------------
+# HTTP
+# --------------------------------------------------------------------------
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "selkies-pam-auth"
+    sys_version = ""
+
+    def address_string(self):
+        return self.client()
+
+    def log_message(self, fmt, *args):
+        pass  # only log what matters, below
+
+    def client(self):
+        fwd = self.headers.get("X-Forwarded-For", "")
+        return fwd.split(",")[0].strip() or "unknown"
+
+    def deny(self, why=None):
+        if why:
+            log(f"denied {self.client()}: {why}")
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", f'Basic realm="{REALM}", charset="UTF-8"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def allow(self, username):
+        try:
+            ready = ensure_desktop(username)
+        except Exception as e:  # never let a start failure look like a login
+            log(f"could not start {username}'s desktop: {e}")
+            ready = False
+        if not ready:
+            return self.starting()
+        self.send_response(200)
+        self.send_header("X-Remote-User", username)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def starting(self):
+        body = (b"<!doctype html><meta charset=utf-8>"
+                b"<meta http-equiv=refresh content=5>"
+                b"<title>Starting your desktop</title>"
+                b"<body style='font:16px system-ui;margin:3em'>"
+                b"<p>Starting your desktop&hellip; this page reloads by itself.</p>")
+        self.send_response(503)
+        self.send_header("Retry-After", "5")
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def handle_any(self):
+        client = self.client()
+        header = self.headers.get("Authorization", "")
+        if not header.startswith("Basic "):
+            return self.deny()  # first visit: browser shows the login prompt
+
+        user = cached_user(header)
+        if user and user_allowed(user):
+            return self.allow(user)
+
+        if locked_out(client):
+            return self.deny("locked out")
+
+        try:
+            raw = base64.b64decode(header[6:].strip(), validate=True).decode("utf-8")
+            username, password = raw.split(":", 1)
+        except (ValueError, UnicodeDecodeError):
+            return self.deny("malformed Authorization header")
+
+        if not username or not password or "\0" in raw:
+            return self.deny("empty credentials")
+
+        ok, reason = pam_check(username, password)
+        if ok and user_allowed(username):
+            remember(header, username)
+            log(f"login {username} from {client}")
+            return self.allow(username)
+
+        record_failure(client)
+        time.sleep(FAIL_DELAY)
+        if ok:
+            return self.deny(f"{username} is not allowed to use the web desktop")
+        return self.deny(f"{username}: {reason}")
+
+    do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = do_OPTIONS = handle_any
+
+
+class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    daemon_threads = True
+
+
+def main():
+    try:
+        os.unlink(SOCKET)
+    except FileNotFoundError:
+        pass
+    os.makedirs(os.path.dirname(SOCKET), exist_ok=True)
+    old = os.umask(0o117)
+    try:
+        srv = Server(SOCKET, Handler)
+    finally:
+        os.umask(old)
+    try:
+        os.chown(SOCKET, 0, grp.getgrnam("caddy").gr_gid)
+    except KeyError:
+        log("no 'caddy' group; socket left root-only")
+    os.chmod(SOCKET, 0o660)
+    log(f"listening on {SOCKET} (PAM service '{PAM_SERVICE.decode()}')")
+    srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

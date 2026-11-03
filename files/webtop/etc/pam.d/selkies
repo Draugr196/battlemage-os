@@ -1,0 +1,5 @@
+#%PAM-1.0
+# Web logins to the Selkies desktop. Same rules as other password logins
+# (including faillock, if your authselect profile enables it).
+auth       include      password-auth
+account    include      password-auth

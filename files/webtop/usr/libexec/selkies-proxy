@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Socket-activated: forward Caddy's connections from /run/selkies/<user>.sock
+# to this user's private Selkies socket. Byte-level, so WebSockets pass through.
+exec /usr/lib/systemd/systemd-socket-proxyd "/run/user/$(id -u)/selkies.sock"

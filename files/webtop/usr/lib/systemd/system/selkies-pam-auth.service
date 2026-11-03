@@ -1,0 +1,31 @@
+[Unit]
+Description=PAM login check and desktop launcher for Selkies (Caddy forward_auth)
+Before=caddy.service
+After=gdm.service
+
+[Service]
+ExecStart=/usr/libexec/selkies-pam-auth
+Restart=on-failure
+RuntimeDirectory=selkies-auth
+RuntimeDirectoryMode=0755
+
+# Root so pam_unix can read /etc/shadow and so it can start users' desktops
+# (systemctl over D-Bus); everything else locked down.
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Needs /run/user to see whether a user's Selkies is up
+ProtectHome=no
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+# faillock and similar PAM modules need to write their state
+ReadWritePaths=-/run/faillock -/var/run/faillock -/var/log
+
+[Install]
+WantedBy=multi-user.target

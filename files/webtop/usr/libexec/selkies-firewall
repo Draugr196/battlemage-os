@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Allow the "selkies" firewalld service in the default zone and in every
+# zone an interface is actually in. Runs every boot; does nothing once set.
+set -euo pipefail
+
+mapfile -t ZONES < <(
+  {
+    firewall-cmd --get-default-zone
+    # Zone names are the unindented lines; interfaces are indented under them
+    firewall-cmd --get-active-zones | awk '!/^[[:space:]]/ {print $1}'
+  } | sort -u
+)
+
+changed=0
+for z in "${ZONES[@]}"; do
+  [[ -z "$z" ]] && continue
+  if ! firewall-cmd --permanent --zone="$z" --query-service=selkies >/dev/null 2>&1; then
+    firewall-cmd --permanent --zone="$z" --add-service=selkies
+    echo "Allowed selkies in zone ${z}"
+    changed=1
+  fi
+done
+
+if [[ $changed -eq 1 ]]; then
+  firewall-cmd --reload
+fi

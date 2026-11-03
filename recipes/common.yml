@@ -59,7 +59,6 @@ modules:
         - papirus-icon-theme
         - fastfetch
         - snapshot
-        - vlc
         - nautilus
         - fzf
         - waydroid

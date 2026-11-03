@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Starts Selkies inside a user's own GNOME session.
+#  - listens on $XDG_RUNTIME_DIR/selkies.sock (private to the user; Caddy
+#    reaches it through selkies-proxy@<user>)
+#  - captures this session through GNOME's portal
+#  - WebRTC media gets a port of its own per user: 8445 + (uid - 1000), for
+#    uids 1000-1099. Outside that range WebRTC is off; WebSockets still work.
+set -euo pipefail
+
+uid="$(id -u)"
+off=$(( uid - 1000 ))
+if (( off >= 0 && off < 100 )); then
+  port=$(( 8445 + off ))
+else
+  port=0
+  echo "uid ${uid} is outside 1000-1099: no WebRTC media port; using WebSockets only" >&2
+fi
+
+args=(
+  --wayland=true
+  --wayland-host-display="${WAYLAND_DISPLAY:-wayland-0}"
+  --unix-socket="${XDG_RUNTIME_DIR:?}/selkies.sock"
+  --enable-basic-auth=false          # Caddy + PAM in front do the login
+  --encoder="${SELKIES_ENCODER:-h264enc}"
+  --webrtc-udp-mux-port="$port"
+  --webrtc-tcp-mux-port="$port"
+)
+(( port == 0 )) && args+=(--mode=websockets --enable-dual-mode=false)
+
+exec /usr/bin/selkies "${args[@]}"

@@ -1,24 +1,17 @@
 [Unit]
-Description=Selkies stream of the GNOME session
-ConditionUser=selkies
+Description=Selkies stream of this user's GNOME session
+# Only for web desktop users (not GDM's own login-screen session)
+ConditionGroup=selkies-users
 PartOf=graphical-session.target
-After=graphical-session.target xdg-desktop-portal.service pipewire.service wireplumber.service
+After=graphical-session.target xdg-desktop-portal.service pipewire.service wireplumber.service selkies-consent.service
 Wants=xdg-desktop-portal.service pipewire.service
 
 [Service]
-Environment=SELKIES_MODE=websockets
-Environment=SELKIES_ENABLE_DUAL_MODE=true
-Environment=SELKIES_WEBRTC_UDP_MUX_PORT=8445
-Environment=SELKIES_WEBRTC_TCP_MUX_PORT=8445
+# Image defaults, then your overrides (public IP, TURN, STUN, encoder...).
+# Socket, WebRTC ports and login are per-user and set by the wrapper.
 EnvironmentFile=/usr/share/selkies/defaults.env
-EnvironmentFile=/etc/selkies/selkies.env
 EnvironmentFile=-/etc/selkies/local.env
-ExecStart=/usr/bin/selkies \
-    --wayland=true \
-    --wayland-host-display=wayland-0 \
-    --port=8080 \
-    --basic-auth-user=${SELKIES_USER} \
-    --basic-auth-password=${SELKIES_PASS}
+ExecStart=/usr/libexec/selkies-user-session
 Restart=on-failure
 RestartSec=3
 

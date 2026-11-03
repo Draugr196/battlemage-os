@@ -1,0 +1,12 @@
+[Unit]
+Description=Open the Selkies ports in firewalld
+After=firewalld.service NetworkManager.service
+Requires=firewalld.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/selkies-firewall
+
+[Install]
+WantedBy=multi-user.target

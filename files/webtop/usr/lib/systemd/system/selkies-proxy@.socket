@@ -1,0 +1,13 @@
+[Unit]
+Description=Selkies front socket for %i
+# Started by selkies-pam-auth after %i logs in on the web page.
+
+[Socket]
+# Root-owned, so a user can't swap it for a link to someone else's desktop.
+# Only Caddy (group caddy) may connect.
+ListenStream=/run/selkies/%i.sock
+SocketUser=root
+SocketGroup=caddy
+SocketMode=0660
+DirectoryMode=0750
+RemoveOnStop=yes

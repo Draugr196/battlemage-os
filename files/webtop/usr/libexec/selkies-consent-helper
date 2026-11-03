@@ -1,0 +1,396 @@
+#!/usr/bin/env python3
+"""
+selkies-consent-helper: approve GNOME's remote desktop consent dialog,
+but only when the request came from Selkies.
+
+How it works
+  1. Becomes a monitor on the session bus and watches calls to the
+     portal's RemoteDesktop and ScreenCast interfaces.
+  2. When a Start call arrives, asks the bus for the caller's PID and
+     reads /proc/<pid>/cgroup. Only a process inside the Selkies systemd
+     unit (default: selkies.service) counts as Selkies.
+  3. If Selkies made the request and no other app has a request in
+     flight, finds the portal's dialog over AT-SPI (the accessibility
+     bus), turns on "Allow Remote Interaction", picks a monitor if none
+     is picked, and presses "Share". Then exits.
+  Anything else is left alone: the dialog just stays on screen.
+
+Run it as the session user, in the graphical session, before Selkies
+starts (or while it is waiting on the dialog):
+
+  selkies-consent-helper.py --dry-run --dump   # look, don't touch
+  selkies-consent-helper.py                    # approve for real
+
+Needs only what Silverblue ships: python3-gobject and the AT-SPI
+typelib (at-spi2-core).
+
+Exit codes: 0 approved, 1 error, 2 timed out without approving,
+3 refused (request not from Selkies, or ambiguous).
+"""
+
+import argparse
+import re
+import sys
+import time
+
+import gi
+
+gi.require_version("Atspi", "2.0")
+from gi.repository import Atspi, Gio, GLib  # noqa: E402
+
+PORTAL_DEST = "org.freedesktop.portal.Desktop"
+PORTAL_IFACES = (
+    "org.freedesktop.portal.RemoteDesktop",
+    "org.freedesktop.portal.ScreenCast",
+)
+
+# Control labels in GNOME's dialog. Confirm these with --dump on a real
+# install; add translations here if the appliance isn't in English.
+REMOTE_TOGGLE = re.compile(r"remote\s+interaction", re.I)
+SHARE_BUTTON = re.compile(r"^\s*(share|allow|start)\s*$", re.I)
+PORTAL_APP = re.compile(r"portal", re.I)
+
+TOGGLE_ROLES = {"check box", "toggle button", "switch", "check menu item"}
+BUTTON_ROLES = {"push button", "button"}
+ITEM_ROLES = {"list item", "table row", "radio button", "tree item", "row"}
+PRESS_ACTIONS = ("click", "activate", "press", "toggle")
+
+# How close in time another app's request must be to count as "in flight"
+CONFLICT_WINDOW_S = 10.0
+
+
+def log(msg):
+    print(f"selkies-consent: {msg}", flush=True)
+
+
+# --------------------------------------------------------------------------
+# Who is calling: D-Bus sender -> PID -> systemd unit
+# --------------------------------------------------------------------------
+
+def sender_pid(bus, sender):
+    try:
+        reply = bus.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus", "GetConnectionUnixProcessID",
+            GLib.Variant("(s)", (sender,)), GLib.VariantType("(u)"),
+            Gio.DBusCallFlags.NONE, 2000, None)
+        return reply.unpack()[0]
+    except GLib.Error as e:
+        log(f"could not resolve PID for {sender}: {e.message}")
+        return None
+
+
+def pid_in_unit(pid, unit):
+    """True if the PID's cgroup path ends in the given systemd unit."""
+    try:
+        with open(f"/proc/{pid}/cgroup") as f:
+            for line in f:
+                path = line.strip().split(":", 2)[-1]
+                parts = path.split("/")
+                # The unit can be the leaf, or a parent of the leaf
+                # (Selkies' own children live under it).
+                if unit in parts:
+                    return True
+    except OSError as e:
+        log(f"could not read cgroup of PID {pid}: {e}")
+    return False
+
+
+# --------------------------------------------------------------------------
+# AT-SPI helpers
+# --------------------------------------------------------------------------
+
+def role(acc):
+    try:
+        return (acc.get_role_name() or "").lower()
+    except GLib.Error:
+        return ""
+
+
+def name(acc):
+    try:
+        return acc.get_name() or ""
+    except GLib.Error:
+        return ""
+
+
+def has_state(acc, state):
+    try:
+        return acc.get_state_set().contains(state)
+    except GLib.Error:
+        return False
+
+
+def children(acc):
+    try:
+        n = acc.get_child_count()
+    except GLib.Error:
+        return []
+    out = []
+    for i in range(n):
+        try:
+            c = acc.get_child_at_index(i)
+        except GLib.Error:
+            c = None
+        if c is not None:
+            out.append(c)
+    return out
+
+
+def walk(acc, depth=0, max_depth=40):
+    yield acc, depth
+    if depth < max_depth:
+        for c in children(acc):
+            yield from walk(c, depth + 1, max_depth)
+
+
+def press(acc, dry_run):
+    """Run the widget's click/activate action."""
+    try:
+        action = acc.get_action_iface()
+    except (GLib.Error, AttributeError):
+        action = None
+    if action is None:
+        log(f"  no actions on {role(acc)} '{name(acc)}'")
+        return False
+    names = [action.get_action_name(i).lower()
+             for i in range(action.get_n_actions())]
+    idx = next((names.index(a) for a in PRESS_ACTIONS if a in names),
+               0 if names else None)
+    if idx is None:
+        return False
+    log(f"  {'would press' if dry_run else 'pressing'} "
+        f"{role(acc)} '{name(acc)}' ({names[idx]})")
+    if dry_run:
+        return True
+    try:
+        return action.do_action(idx)
+    except GLib.Error as e:
+        log(f"  action failed: {e.message}")
+        return False
+
+
+def portal_dialogs():
+    """Showing top-level windows owned by the portal backend."""
+    desktop = Atspi.get_desktop(0)
+    found = []
+    for app in children(desktop):
+        if not PORTAL_APP.search(name(app)):
+            continue
+        for win in children(app):
+            if has_state(win, Atspi.StateType.SHOWING) or \
+               has_state(win, Atspi.StateType.VISIBLE):
+                found.append((app, win))
+    return found
+
+
+def dump(win):
+    for acc, depth in walk(win):
+        flags = []
+        if has_state(acc, Atspi.StateType.CHECKED):
+            flags.append("checked")
+        if not has_state(acc, Atspi.StateType.SENSITIVE):
+            flags.append("insensitive")
+        if has_state(acc, Atspi.StateType.SELECTED):
+            flags.append("selected")
+        extra = f" [{', '.join(flags)}]" if flags else ""
+        print(f"{'  ' * depth}{role(acc)}: '{name(acc)}'{extra}")
+
+
+def ensure_monitor_selected(win, dry_run):
+    """If no monitor row is selected, select the first one."""
+    items = [a for a, _ in walk(win)
+             if role(a) in ITEM_ROLES and has_state(a, Atspi.StateType.SHOWING)]
+    if not items:
+        return
+    if any(has_state(a, Atspi.StateType.SELECTED) or
+           has_state(a, Atspi.StateType.CHECKED) for a in items):
+        return
+    first = items[0]
+    log(f"  no monitor selected; {'would select' if dry_run else 'selecting'} "
+        f"'{name(first)}'")
+    if dry_run:
+        return
+    # Prefer the parent's Selection interface, fall back to clicking the row
+    try:
+        parent = first.get_parent()
+        sel = parent.get_selection_iface() if parent else None
+        if sel is not None:
+            sel.select_child(first.get_index_in_parent())
+            return
+    except (GLib.Error, AttributeError):
+        pass
+    press(first, dry_run)
+
+
+def approve(win, dry_run):
+    """Enable remote interaction, make sure a monitor is picked, press Share."""
+    for acc, _ in walk(win):
+        if role(acc) in TOGGLE_ROLES and REMOTE_TOGGLE.search(name(acc)):
+            if not has_state(acc, Atspi.StateType.CHECKED):
+                press(acc, dry_run)
+            else:
+                log(f"  '{name(acc)}' already on")
+
+    ensure_monitor_selected(win, dry_run)
+
+    # Re-walk: the Share button may only become sensitive after selection
+    if not dry_run:
+        time.sleep(0.3)
+    for acc, _ in walk(win):
+        if role(acc) in BUTTON_ROLES and SHARE_BUTTON.search(name(acc)):
+            if not has_state(acc, Atspi.StateType.SENSITIVE) and not dry_run:
+                log(f"  '{name(acc)}' is not clickable yet")
+                return False
+            return press(acc, dry_run)
+    log("  no Share button found (run with --dump to see the dialog)")
+    return False
+
+
+# --------------------------------------------------------------------------
+# Main
+# --------------------------------------------------------------------------
+
+class Helper:
+    def __init__(self, args):
+        self.args = args
+        self.loop = GLib.MainLoop()
+        self.result = 2
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.selkies_start = None    # (time, sender)
+        self.other_starts = []       # [time, ...]
+        self.approving = False
+
+    # -- bus monitoring --------------------------------------------------
+
+    def start_monitor(self):
+        addr = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION, None)
+        self.mon = Gio.DBusConnection.new_for_address_sync(
+            addr,
+            Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT |
+            Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+            None, None)
+        rules = [f"type='method_call',destination='{PORTAL_DEST}',"
+                 f"interface='{i}'" for i in PORTAL_IFACES]
+        self.mon.add_filter(self.on_message)
+        self.mon.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.Monitoring", "BecomeMonitor",
+            GLib.Variant("(asu)", (rules, 0)), None,
+            Gio.DBusCallFlags.NONE, -1, None)
+        log("watching portal requests on the session bus")
+
+    def on_message(self, _conn, msg, incoming):
+        # Runs on GDBus' worker thread: hand off to the main loop
+        if (incoming and
+                msg.get_message_type() == Gio.DBusMessageType.METHOD_CALL and
+                msg.get_interface() in PORTAL_IFACES):
+            GLib.idle_add(self.on_portal_call, msg.get_sender(),
+                          msg.get_interface(), msg.get_member())
+        return None  # a monitor only observes
+
+    def on_portal_call(self, sender, iface, member):
+        short = iface.rsplit(".", 1)[-1]
+        if member != "Start":
+            if self.args.verbose:
+                log(f"{short}.{member} from {sender}")
+            return False
+        pid = sender_pid(self.bus, sender)
+        is_selkies = pid is not None and pid_in_unit(pid, self.args.unit)
+        log(f"{short}.Start from {sender} (pid {pid}) -> "
+            f"{'Selkies' if is_selkies else 'not Selkies'}")
+        now = time.monotonic()
+        if is_selkies:
+            self.selkies_start = (now, sender)
+            if not self.approving:
+                self.approving = True
+                self.deadline = now + self.args.dialog_timeout
+                GLib.timeout_add(500, self.try_approve)
+        else:
+            self.other_starts.append(now)
+        return False
+
+    # -- approval --------------------------------------------------------
+
+    def conflict(self):
+        t = self.selkies_start[0]
+        return any(abs(o - t) < CONFLICT_WINDOW_S for o in self.other_starts)
+
+    def try_approve(self):
+        if self.conflict():
+            log("another app asked for remote desktop at the same time; "
+                "refusing to approve anything")
+            self.finish(3)
+            return False
+
+        dialogs = portal_dialogs()
+        if not dialogs:
+            if time.monotonic() > self.deadline:
+                log("no consent dialog appeared (token may have restored)")
+                self.finish(2)
+                return False
+            return True  # keep polling
+
+        if len(dialogs) > 1:
+            log(f"{len(dialogs)} portal dialogs are open; can't tell which "
+                "is Selkies', refusing")
+            self.finish(3)
+            return False
+
+        app, win = dialogs[0]
+        log(f"found dialog '{name(win)}' from '{name(app)}'")
+        if self.args.dump:
+            dump(win)
+        ok = approve(win, self.args.dry_run)
+        if ok:
+            log("dry run: would have approved" if self.args.dry_run
+                else "approved")
+            self.finish(0)
+            return False
+        if time.monotonic() > self.deadline:
+            self.finish(1)
+            return False
+        return True  # try again on the next tick
+
+    def finish(self, code):
+        self.result = code
+        self.loop.quit()
+
+    def run(self):
+        Atspi.init()
+        self.start_monitor()
+        GLib.timeout_add_seconds(self.args.timeout, self.on_timeout)
+        self.loop.run()
+        return self.result
+
+    def on_timeout(self):
+        if not self.approving:
+            log(f"no request from Selkies within {self.args.timeout}s")
+        self.finish(self.result if self.approving else 2)
+        return False
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    p.add_argument("--unit", default="selkies.service",
+                   help="systemd unit Selkies runs in (default: %(default)s)")
+    p.add_argument("--timeout", type=int, default=180,
+                   help="overall seconds to wait for Selkies (default: %(default)s)")
+    p.add_argument("--dialog-timeout", type=int, default=30,
+                   help="seconds to wait for the dialog after Start "
+                        "(default: %(default)s)")
+    p.add_argument("--dry-run", action="store_true",
+                   help="find everything, press nothing")
+    p.add_argument("--dump", action="store_true",
+                   help="print the dialog's accessibility tree")
+    p.add_argument("-v", "--verbose", action="store_true")
+    args = p.parse_args()
+    try:
+        return Helper(args).run()
+    except GLib.Error as e:
+        log(f"error: {e.message}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
