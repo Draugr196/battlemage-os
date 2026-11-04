@@ -1,0 +1,24 @@
+; Selkies appliance: let Caddy (confined as httpd_t) reach exactly two kinds
+; of socket and nothing else:
+;   /run/selkies-auth/auth.sock   the PAM login helper (unconfined_service_t)
+;   /run/selkies/<user>.sock      per-user front sockets, created by systemd
+;                                 socket units (so the peer is init_t)
+; Both directories get their own type, so the rules below don't open any
+; other socket owned by those domains.
+
+(type selkies_run_t)
+(roletype object_r selkies_run_t)
+; A runtime (/run) file type, as files_pid_file() makes one: systemd may
+; create these dirs and sockets, tmpfiles may create /run/selkies.
+(typeattributeset file_type (selkies_run_t))
+(typeattributeset non_security_file_type (selkies_run_t))
+(typeattributeset non_auth_file_type (selkies_run_t))
+(typeattributeset pidfile (selkies_run_t))
+
+(filecon "/run/selkies-auth(/.*)?" any (system_u object_r selkies_run_t ((s0) (s0))))
+(filecon "/run/selkies(/.*)?" any (system_u object_r selkies_run_t ((s0) (s0))))
+
+(allow httpd_t selkies_run_t (dir (getattr search open)))
+(allow httpd_t selkies_run_t (sock_file (getattr write)))
+(allow httpd_t unconfined_service_t (unix_stream_socket (connectto)))
+(allow httpd_t init_t (unix_stream_socket (connectto)))

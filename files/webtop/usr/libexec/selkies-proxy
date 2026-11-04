@@ -1,4 +1,77 @@
-#!/usr/bin/env bash
-# Socket-activated: forward Caddy's connections from /run/selkies/<user>.sock
-# to this user's private Selkies socket. Byte-level, so WebSockets pass through.
-exec /usr/lib/systemd/systemd-socket-proxyd "/run/user/$(id -u)/selkies.sock"
+#!/usr/bin/python3 -I
+"""
+Socket-activated byte proxy, run as one user by selkies-proxy@<user>.service.
+
+Caddy connects to the root-owned /run/selkies/<user>.sock (handed to us by
+systemd as fd 3); each connection is relayed to this user's own Selkies at
+/run/user/<uid>/selkies.sock. Running as the user means it can only ever
+reach that user's desktop. Byte-level, so WebSockets pass straight through.
+
+(Not systemd-socket-proxyd: SELinux confines that one in a domain that may
+not connect to users' sockets.)
+"""
+import os
+import socket
+import sys
+import threading
+
+LISTEN_FD = 3  # SD_LISTEN_FDS_START
+BUF = 256 * 1024
+TARGET = os.environ.get("SELKIES_PROXY_TARGET",
+                        f"/run/user/{os.getuid()}/selkies.sock")
+
+
+def log(msg):
+    print(f"selkies-proxy: {msg}", file=sys.stderr, flush=True)
+
+
+def pump(src, dst):
+    """Copy one direction until EOF, then pass the EOF on."""
+    try:
+        while True:
+            data = src.recv(BUF)
+            if not data:
+                break
+            dst.sendall(data)
+    except OSError:
+        pass
+    finally:
+        for sock, how in ((dst, socket.SHUT_WR), (src, socket.SHUT_RD)):
+            try:
+                sock.shutdown(how)
+            except OSError:
+                pass
+
+
+def handle(client):
+    upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        upstream.connect(TARGET)
+    except OSError as e:
+        log(f"{TARGET}: {e}")
+        client.close()
+        upstream.close()
+        return
+    back = threading.Thread(target=pump, args=(upstream, client), daemon=True)
+    back.start()
+    pump(client, upstream)
+    back.join()
+    client.close()
+    upstream.close()
+
+
+def main():
+    if int(os.environ.get("LISTEN_FDS", "0")) < 1 or \
+            os.environ.get("LISTEN_PID") != str(os.getpid()):
+        sys.exit("selkies-proxy: start me through selkies-proxy@<user>.socket")
+    listener = socket.socket(fileno=LISTEN_FD)
+    while True:
+        try:
+            conn, _ = listener.accept()
+        except InterruptedError:
+            continue
+        threading.Thread(target=handle, args=(conn,), daemon=True).start()
+
+
+if __name__ == "__main__":
+    main()
