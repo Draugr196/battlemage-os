@@ -18,6 +18,7 @@ How it works
 Run it as the session user, in the graphical session, before Selkies
 starts (or while it is waiting on the dialog):
 
+  selkies-consent-helper --dump-now            # print an open dialog, touch nothing
   selkies-consent-helper.py --dry-run --dump   # look, don't touch
   selkies-consent-helper.py                    # approve for real
 
@@ -32,6 +33,7 @@ import argparse
 import re
 import sys
 import time
+import warnings
 
 import gi
 
@@ -44,15 +46,22 @@ PORTAL_IFACES = (
     "org.freedesktop.portal.ScreenCast",
 )
 
-# Control labels in GNOME's dialog. Confirm these with --dump on a real
-# install; add translations here if the appliance isn't in English.
-REMOTE_TOGGLE = re.compile(r"remote\s+interaction", re.I)
-SHARE_BUTTON = re.compile(r"^\s*(share|allow|start)\s*$", re.I)
+# GNOME 50's dialog (xdg-desktop-portal-gnome, remotedesktopdialog.ui and
+# screencastwidget.ui): an "Allow Remote _Interaction" switch row, a
+# "_Remember this selection" check box (shown because Selkies asks for a
+# persistent session, unticked by default; without it GNOME issues no
+# restore token and asks again next time), one toggle button per monitor,
+# and a "_Share" button that stays insensitive until a monitor is picked.
+# Names are matched with the mnemonic underscores removed. Add translations
+# here if the appliance isn't in English; check with --dump-now.
+REMOTE_TOGGLE = re.compile(r"remote\s*interaction", re.I)
+REMEMBER_CHECK = re.compile(r"remember", re.I)
+SHARE_BUTTON = re.compile(r"^\s*share\s*$", re.I)
+CANCEL_BUTTON = re.compile(r"^\s*cancel\s*$", re.I)
 PORTAL_APP = re.compile(r"portal", re.I)
 
-TOGGLE_ROLES = {"check box", "toggle button", "switch", "check menu item"}
+SWITCH_ROLES = {"switch", "toggle button", "check box"}
 BUTTON_ROLES = {"push button", "button"}
-ITEM_ROLES = {"list item", "table row", "radio button", "tree item", "row"}
 PRESS_ACTIONS = ("click", "activate", "press", "toggle")
 
 # How close in time another app's request must be to count as "in flight"
@@ -108,10 +117,30 @@ def role(acc):
 
 
 def name(acc):
+    """Accessible name, without GTK mnemonic underscores ("_Share" -> "Share")."""
     try:
-        return acc.get_name() or ""
+        n = acc.get_name() or ""
     except GLib.Error:
         return ""
+    if not n:
+        # Labelled-by relations (e.g. monitor buttons labelled by an inscription)
+        try:
+            for rel in acc.get_relation_set() or []:
+                if rel.get_relation_type() == Atspi.RelationType.LABELLED_BY:
+                    for i in range(rel.get_n_targets()):
+                        t = rel.get_target(i)
+                        if t is not None and t.get_name():
+                            n = t.get_name()
+                            break
+        except (GLib.Error, AttributeError):
+            pass
+    return n.replace("_", "")
+
+
+def is_on(acc):
+    """Checked (check boxes, switches) or pressed (toggle buttons)."""
+    return has_state(acc, Atspi.StateType.CHECKED) or \
+        has_state(acc, Atspi.StateType.PRESSED)
 
 
 def has_state(acc, state):
@@ -144,21 +173,41 @@ def walk(acc, depth=0, max_depth=40):
             yield from walk(c, depth + 1, max_depth)
 
 
-def press(acc, dry_run):
-    """Run the widget's click/activate action."""
+def action_names(acc):
+    """The widget's AT-SPI action names, lowercased ([] if it has none)."""
     try:
         action = acc.get_action_iface()
+        if action is None:
+            return []
+        n = action.get_n_actions()
     except (GLib.Error, AttributeError):
-        action = None
-    if action is None:
-        log(f"  no actions on {role(acc)} '{name(acc)}'")
+        return []
+    out = []
+    for i in range(n):
+        # The action interface lives on the Accessible itself, so
+        # action.get_name is Accessible.get_name; call Action's explicitly.
+        # Older libatspi only has the (deprecated) get_action_name.
+        try:
+            nm = Atspi.Action.get_name(action, i)
+        except (AttributeError, TypeError, GLib.Error):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                try:
+                    nm = action.get_action_name(i)
+                except (AttributeError, GLib.Error):
+                    nm = ""
+        out.append((nm or "").lower())
+    return out
+
+
+def press(acc, dry_run):
+    """Run the widget's click/activate action."""
+    names = action_names(acc)
+    if not names:
+        log(f"  {role(acc)} '{name(acc)}' has no action to press")
         return False
-    names = [action.get_action_name(i).lower()
-             for i in range(action.get_n_actions())]
-    idx = next((names.index(a) for a in PRESS_ACTIONS if a in names),
-               0 if names else None)
-    if idx is None:
-        return False
+    action = acc.get_action_iface()
+    idx = next((names.index(a) for a in PRESS_ACTIONS if a in names), 0)
     log(f"  {'would press' if dry_run else 'pressing'} "
         f"{role(acc)} '{name(acc)}' ({names[idx]})")
     if dry_run:
@@ -189,62 +238,87 @@ def dump(win):
         flags = []
         if has_state(acc, Atspi.StateType.CHECKED):
             flags.append("checked")
+        if has_state(acc, Atspi.StateType.PRESSED):
+            flags.append("pressed")
         if not has_state(acc, Atspi.StateType.SENSITIVE):
             flags.append("insensitive")
+        if not has_state(acc, Atspi.StateType.SHOWING):
+            flags.append("hidden")
         if has_state(acc, Atspi.StateType.SELECTED):
             flags.append("selected")
         extra = f" [{', '.join(flags)}]" if flags else ""
+        acts = action_names(acc)
+        extra += f" {{actions: {', '.join(acts)}}}" if acts else ""
         print(f"{'  ' * depth}{role(acc)}: '{name(acc)}'{extra}")
 
 
+def showing(acc):
+    return has_state(acc, Atspi.StateType.SHOWING)
+
+
+def switch_on(acc, label, dry_run):
+    """Turn on a switch/check box. `acc` is the matching widget, or a row
+    (AdwSwitchRow) whose switch is a descendant."""
+    # The match itself plus any switch inside it. GNOME 50's AdwSwitchRow is
+    # exposed as a "switch" with no actions; the GtkSwitch inside it has them.
+    candidates = [acc] + [d for d, _ in walk(acc)
+                          if d is not acc and role(d) in SWITCH_ROLES]
+    if any(is_on(c) for c in candidates):
+        log(f"  '{label}' already on")
+        return True
+    for c in candidates:
+        if action_names(c):
+            return press(c, dry_run)
+    log(f"  '{label}': nothing pressable found (see --dump-now)")
+    return False
+
+
+def find(win, pattern, roles=None):
+    """Showing widgets whose name matches; first the exact role, then any."""
+    hits = [a for a, _ in walk(win) if showing(a) and pattern.search(name(a))]
+    if roles:
+        preferred = [a for a in hits if role(a) in roles]
+        return preferred or hits
+    return hits
+
+
 def ensure_monitor_selected(win, dry_run):
-    """If no monitor row is selected, select the first one."""
-    items = [a for a, _ in walk(win)
-             if role(a) in ITEM_ROLES and has_state(a, Atspi.StateType.SHOWING)]
-    if not items:
+    """Monitors are toggle buttons in the chooser. If none is on, press the
+    first one (Selkies' headless session has exactly one virtual monitor)."""
+    monitors = [a for a, _ in walk(win)
+                if showing(a) and role(a) == "toggle button"
+                and not REMOTE_TOGGLE.search(name(a))
+                and not REMEMBER_CHECK.search(name(a))]
+    if not monitors:
+        log("  no monitor buttons visible (fine if GNOME preselected one)")
         return
-    if any(has_state(a, Atspi.StateType.SELECTED) or
-           has_state(a, Atspi.StateType.CHECKED) for a in items):
+    if any(is_on(m) for m in monitors):
         return
-    first = items[0]
-    log(f"  no monitor selected; {'would select' if dry_run else 'selecting'} "
-        f"'{name(first)}'")
-    if dry_run:
-        return
-    # Prefer the parent's Selection interface, fall back to clicking the row
-    try:
-        parent = first.get_parent()
-        sel = parent.get_selection_iface() if parent else None
-        if sel is not None:
-            sel.select_child(first.get_index_in_parent())
-            return
-    except (GLib.Error, AttributeError):
-        pass
-    press(first, dry_run)
+    log(f"  no monitor selected; picking '{name(monitors[0]) or 'monitor 1'}'")
+    press(monitors[0], dry_run)
 
 
 def approve(win, dry_run):
-    """Enable remote interaction, make sure a monitor is picked, press Share."""
-    for acc, _ in walk(win):
-        if role(acc) in TOGGLE_ROLES and REMOTE_TOGGLE.search(name(acc)):
-            if not has_state(acc, Atspi.StateType.CHECKED):
-                press(acc, dry_run)
-            else:
-                log(f"  '{name(acc)}' already on")
-
+    """Remember the choice, allow interaction, pick the monitor, press Share."""
+    for acc in find(win, REMEMBER_CHECK, {"check box"})[:1]:
+        switch_on(acc, "Remember this selection", dry_run)
+    for acc in find(win, REMOTE_TOGGLE, SWITCH_ROLES)[:1]:
+        switch_on(acc, "Allow Remote Interaction", dry_run)
     ensure_monitor_selected(win, dry_run)
 
-    # Re-walk: the Share button may only become sensitive after selection
-    if not dry_run:
-        time.sleep(0.3)
-    for acc, _ in walk(win):
-        if role(acc) in BUTTON_ROLES and SHARE_BUTTON.search(name(acc)):
-            if not has_state(acc, Atspi.StateType.SENSITIVE) and not dry_run:
-                log(f"  '{name(acc)}' is not clickable yet")
-                return False
-            return press(acc, dry_run)
-    log("  no Share button found (run with --dump to see the dialog)")
-    return False
+    # Share turns sensitive only after GNOME processes the selection
+    deadline = time.monotonic() + (0 if dry_run else 5)
+    while True:
+        share = find(win, SHARE_BUTTON, BUTTON_ROLES)
+        if not share:
+            log("  no Share button found (run with --dump-now to see the dialog)")
+            return False
+        if dry_run or has_state(share[0], Atspi.StateType.SENSITIVE):
+            return press(share[0], dry_run)
+        if time.monotonic() > deadline:
+            log("  Share never became clickable (no monitor selected?)")
+            return False
+        time.sleep(0.2)
 
 
 # --------------------------------------------------------------------------
@@ -383,8 +457,35 @@ def main():
                    help="find everything, press nothing")
     p.add_argument("--dump", action="store_true",
                    help="print the dialog's accessibility tree")
+    p.add_argument("--dump-now", action="store_true",
+                   help="print any portal dialog open right now, show what "
+                        "would be pressed, and exit (no D-Bus watching)")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
+    if args.dump_now:
+        Atspi.init()
+        dialogs = portal_dialogs()
+        if not dialogs:
+            log("no portal dialog found. Everything AT-SPI can see:")
+            desktop = Atspi.get_desktop(0)
+            apps = children(desktop)
+            if not apps:
+                log("  (nothing: the accessibility bus has no applications; "
+                    "is DBUS_SESSION_BUS_ADDRESS the desktop session's bus?)")
+            for app in apps:
+                print(f"app '{name(app)}'")
+                for win in children(app):
+                    st = "showing" if showing(win) else "hidden"
+                    print(f"  {role(win)}: '{name(win)}' [{st}]")
+                    if showing(win) and args.dump:
+                        dump(win)
+            return 2
+        for app, win in dialogs:
+            print(f"=== '{name(win)}' from '{name(app)}'")
+            dump(win)
+            print("--- what the helper would do:")
+            approve(win, dry_run=True)
+        return 0
     try:
         return Helper(args).run()
     except GLib.Error as e:
