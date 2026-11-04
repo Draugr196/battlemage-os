@@ -3,7 +3,8 @@ Description=Approve GNOME's screen-sharing consent for Selkies (first start only
 # In a headless session nobody can see the dialog. This watches for Selkies'
 # own portal request (checked by cgroup) and approves only that one.
 # Once GNOME has issued a restore token it never runs again.
-ConditionGroup=selkies-users
+ConditionGroup=|selkies-users
+ConditionGroup=|wheel
 ConditionPathExists=!%h/.local/state/pixelflux/portal-restore-token
 PartOf=graphical-session.target
 After=graphical-session.target

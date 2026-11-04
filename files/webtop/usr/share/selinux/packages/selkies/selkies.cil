@@ -18,6 +18,13 @@
 (filecon "/run/selkies-auth(/.*)?" any (system_u object_r selkies_run_t ((s0) (s0))))
 (filecon "/run/selkies(/.*)?" any (system_u object_r selkies_run_t ((s0) (s0))))
 
+; Fedora's gnome-headless-session@.service runs this helper, which logs the
+; user in and starts gnome-session. Fedora's policy has no label for it, so
+; it runs as a plain service (unconfined_service_t) and SELinux refuses its
+; switch into the user's context. Label it like GDM's other helpers so it
+; runs as xdm_t, the login manager's domain, which may start user sessions.
+(filecon "/usr/libexec/gdm-headless-login-session" file (system_u object_r xdm_exec_t ((s0) (s0))))
+
 (allow httpd_t selkies_run_t (dir (getattr search open)))
 (allow httpd_t selkies_run_t (sock_file (getattr write)))
 (allow httpd_t unconfined_service_t (unix_stream_socket (connectto)))
