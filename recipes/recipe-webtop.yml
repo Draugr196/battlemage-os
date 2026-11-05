@@ -48,6 +48,7 @@ modules:
       enabled:
         - selkies.service
         - selkies-consent.service
+        - selkies-keep-awake.service
 
   - type: initramfs
 

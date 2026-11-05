@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Keep a streamed GNOME session's screen on.
+#
+# A headless session has no keyboard or mouse of its own, so GNOME counts it
+# as idle and, after org.gnome.desktop.session idle-delay, blanks the
+# virtual monitor (Mutter PowerSaveMode 3). A monitor that's off produces no
+# screencast frames, so Selkies streams black. Settings can't be relied on to
+# prevent that (user or dconf settings override image defaults), so:
+#   1. hold an idle inhibitor for the whole session (no blank, dim or lock)
+#   2. if the monitor is powered down anyway, switch it back on
+set -u
+
+DC=(org.gnome.Mutter.DisplayConfig /org/gnome/Mutter/DisplayConfig
+    org.gnome.Mutter.DisplayConfig PowerSaveMode)
+INTERVAL="${SELKIES_KEEP_AWAKE_INTERVAL:-5}"
+
+inhibitor=""
+cleanup() { [[ -n "$inhibitor" ]] && kill "$inhibitor" 2>/dev/null; exit 0; }
+trap cleanup TERM INT
+
+start_inhibitor() {
+  gnome-session-inhibit --inhibit idle --reason "Streaming with Selkies" \
+    --inhibit-only &
+  inhibitor=$!
+  echo "holding an idle inhibitor (pid $inhibitor)"
+}
+
+start_inhibitor
+while true; do
+  # Restart the inhibitor if it went away (e.g. gnome-session restarted it)
+  if ! kill -0 "$inhibitor" 2>/dev/null; then
+    echo "idle inhibitor exited; starting it again"
+    start_inhibitor
+  fi
+  mode="$(busctl --user get-property "${DC[@]}" 2>/dev/null | awk '{print $2}')"
+  if [[ -n "$mode" && "$mode" != 0 ]]; then
+    if busctl --user set-property "${DC[@]}" i 0 2>/dev/null; then
+      echo "screen was in power save (mode $mode); switched it back on"
+    else
+      echo "screen is in power save (mode $mode) and Mutter refused to wake it"
+    fi
+  fi
+  sleep "$INTERVAL" & wait $!
+done

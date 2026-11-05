@@ -1,0 +1,16 @@
+[Unit]
+Description=Keep the streamed GNOME session's screen on for Selkies
+# Without this, GNOME blanks the headless virtual monitor after idle-delay
+# and Selkies streams black (no frames from a powered-down monitor).
+ConditionGroup=|selkies-users
+ConditionGroup=|wheel
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/libexec/selkies-keep-awake
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
