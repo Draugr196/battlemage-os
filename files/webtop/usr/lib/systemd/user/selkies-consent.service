@@ -1,18 +1,21 @@
 [Unit]
-Description=Approve GNOME's screen-sharing consent for Selkies (first start only)
+Description=Approve GNOME's screen-sharing consent for Selkies
 # In a headless session nobody can see the dialog. This watches for Selkies'
 # own portal request (checked by cgroup) and approves only that one.
-# Once GNOME has issued a restore token it never runs again.
+# Runs every session: a saved token can still be rejected by GNOME (e.g. one
+# issued for a real monitor, then used on the headless virtual one), and
+# then the dialog comes back. If no dialog appears, it simply exits.
 ConditionGroup=|selkies-users
 ConditionGroup=|wheel
-ConditionPathExists=!%h/.local/state/pixelflux/portal-restore-token
 PartOf=graphical-session.target
 After=graphical-session.target
 Before=selkies.service
 
 [Service]
 Type=exec
-ExecStart=/usr/libexec/selkies-consent-helper --unit selkies.service --timeout 300
+# Selkies only asks GNOME when a browser connects, which can be any time
+# after the session starts, so wait for as long as the session lives.
+ExecStart=/usr/libexec/selkies-consent-helper --unit selkies.service --timeout 0
 # 2 = nothing to approve (e.g. the token restored after all): not a failure
 SuccessExitStatus=2
 

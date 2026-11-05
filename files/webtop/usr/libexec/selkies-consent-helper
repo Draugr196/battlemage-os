@@ -351,17 +351,26 @@ class Helper:
             "org.freedesktop.DBus", "/org/freedesktop/DBus",
             "org.freedesktop.DBus.Monitoring", "BecomeMonitor",
             GLib.Variant("(asu)", (rules, 0)), None,
-            Gio.DBusCallFlags.NONE, -1, None)
+            Gio.DBusCallFlags.NONE, 10000, None)
         log("watching portal requests on the session bus")
 
     def on_message(self, _conn, msg, incoming):
-        # Runs on GDBus' worker thread: hand off to the main loop
-        if (incoming and
-                msg.get_message_type() == Gio.DBusMessageType.METHOD_CALL and
+        # Runs on GDBus' worker thread, for outgoing messages too. Our own
+        # outgoing calls (BecomeMonitor) and the replies to them must pass
+        # through, or the call never leaves / never completes. Everything
+        # else is an observed message: note it and drop it, so GDBus never
+        # tries to answer it (a monitor that sends anything gets disconnected
+        # by the bus).
+        if not incoming:
+            return msg
+        mtype = msg.get_message_type()
+        if mtype in (Gio.DBusMessageType.METHOD_RETURN, Gio.DBusMessageType.ERROR):
+            return msg
+        if (incoming and mtype == Gio.DBusMessageType.METHOD_CALL and
                 msg.get_interface() in PORTAL_IFACES):
             GLib.idle_add(self.on_portal_call, msg.get_sender(),
                           msg.get_interface(), msg.get_member())
-        return None  # a monitor only observes
+        return None
 
     def on_portal_call(self, sender, iface, member):
         short = iface.rsplit(".", 1)[-1]
@@ -433,7 +442,8 @@ class Helper:
     def run(self):
         Atspi.init()
         self.start_monitor()
-        GLib.timeout_add_seconds(self.args.timeout, self.on_timeout)
+        if self.args.timeout > 0:
+            GLib.timeout_add_seconds(self.args.timeout, self.on_timeout)
         self.loop.run()
         return self.result
 
@@ -449,7 +459,8 @@ def main():
     p.add_argument("--unit", default="selkies.service",
                    help="systemd unit Selkies runs in (default: %(default)s)")
     p.add_argument("--timeout", type=int, default=180,
-                   help="overall seconds to wait for Selkies (default: %(default)s)")
+                   help="overall seconds to wait for Selkies; 0 = until it asks "
+                        "(default: %(default)s)")
     p.add_argument("--dialog-timeout", type=int, default=30,
                    help="seconds to wait for the dialog after Start "
                         "(default: %(default)s)")
