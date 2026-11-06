@@ -439,54 +439,64 @@ def clear_failures(client):
 # --------------------------------------------------------------------------
 
 CSS = """
-:root{--bg:#eef1f5;--card:#fff;--text:#16191f;--muted:#5d6675;--line:#d6dbe3;
---field:#fff;--accent:#2f6fde;--accent-hover:#255cc0;--accent-text:#fff;
---err-bg:#fdecec;--err-text:#9b1c1c;--ok-bg:#e9f5ee;--ok-text:#17603a;--focus:#2f6fde55}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1217;--card:#1a1f27;--text:#e8ebf0;
---muted:#9aa3b2;--line:#2c3440;--field:#12161c;--accent:#5b8ff0;--accent-hover:#7aa4f3;
---accent-text:#0b1220;--err-bg:#3a1a1c;--err-text:#ffb4b4;--ok-bg:#15301f;--ok-text:#9be2b5;
---focus:#5b8ff066}}
-*{box-sizing:border-box}
+/* Matches the Battlemage GTK theme (dark only): window #1A2023, view
+   #1e2529, entries #252B2E, borders #0b0d0f, text #BCC4C9, focus #88b7af,
+   suggested action #7b9cb5. Square corners throughout. */
+:root{color-scheme:dark;
+--desk:#111518;--window:#1A2023;--view:#1e2529;--entry:#252B2E;
+--border:#0b0d0f;--edge:rgba(255,255,255,.1);
+--fg:#BCC4C9;--text:#bcc3c9;--dim:#8b9397;
+--focus:#88b7af;--suggested:#7b9cb5;--selected:#506A68;
+--error:#b25f5d;--success:#68a49a;--link:#7b9cb5}
+*{box-sizing:border-box;border-radius:0}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);
-font:15px/1.5 system-ui,-apple-system,"Segoe UI",Cantarell,Roboto,sans-serif;
+body{margin:0;background:var(--desk);color:var(--fg);
+font:11pt/1.45 "Adwaita Sans",Cantarell,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 display:flex;align-items:center;justify-content:center;padding:24px 16px}
 main{width:100%;max-width:380px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;
-padding:32px 28px;box-shadow:0 1px 2px #0000000d,0 8px 24px #00000012}
-.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}
-.brand svg{flex:none;color:var(--accent)}
-.brand .name{font-weight:600;font-size:16px;line-height:1.25;word-break:break-word}
-.brand .sub{color:var(--muted);font-size:13px}
-h1{font-size:22px;line-height:1.3;margin:0 0 4px;font-weight:650}
-p.lead{color:var(--muted);margin:0 0 22px}
-label{display:block;font-weight:550;font-size:13.5px;margin:14px 0 6px}
-input{width:100%;font:inherit;color:var(--text);background:var(--field);
-border:1px solid var(--line);border-radius:9px;padding:10px 12px;outline:none}
-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
-button,.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;
-width:100%;margin-top:22px;font:inherit;font-weight:600;color:var(--accent-text);
-background:var(--accent);border:0;border-radius:9px;padding:11px 14px;cursor:pointer;
-text-decoration:none}
-button:hover,.button:hover{background:var(--accent-hover)}
-button:focus-visible,.button:focus-visible{outline:none;box-shadow:0 0 0 3px var(--focus)}
-button[disabled]{opacity:.7;cursor:progress}
-.button.secondary{background:transparent;color:var(--accent);border:1px solid var(--line)}
-.notice{border-radius:9px;padding:10px 12px;margin:0 0 6px;font-size:14px}
-.notice.error{background:var(--err-bg);color:var(--err-text)}
-.notice.ok{background:var(--ok-bg);color:var(--ok-text)}
-.foot{color:var(--muted);font-size:12.5px;text-align:center;margin-top:18px}
-.foot a{color:inherit}
-.spinner{width:38px;height:38px;border-radius:50%;border:3px solid var(--line);
-border-top-color:var(--accent);animation:spin .9s linear infinite;margin:6px 0 20px}
-@keyframes spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.spinner{animation-duration:3s}}
+.window{background:var(--window);border:1px solid var(--border);
+box-shadow:0 0 0 1px rgba(0,0,0,.05),0 3px 3px rgba(0,0,0,.2),0 12px 32px rgba(0,0,0,.35)}
+.headerbar{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 14px;
+background:var(--window);border-bottom:1px solid var(--border);box-shadow:inset 0 1px var(--edge)}
+.headerbar svg{flex:none;color:var(--focus)}
+.headerbar .title{font-weight:700;font-size:10.5pt;color:var(--text);line-height:1.2;
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.headerbar .subtitle{color:var(--dim);font-size:9pt;line-height:1.2}
+.content{padding:24px 22px 22px}
+h1{font-size:15pt;line-height:1.3;margin:0 0 4px;font-weight:700;color:var(--text)}
+p.lead{color:var(--dim);margin:0 0 18px}
+label{display:block;font-weight:600;font-size:10pt;margin:14px 0 6px;color:var(--text)}
+input{width:100%;font:inherit;color:var(--text);background:var(--entry);
+border:1px solid var(--border);padding:8px 10px;min-height:36px;outline:none;
+transition:border-color .2s cubic-bezier(.25,.46,.45,.94),box-shadow .2s cubic-bezier(.25,.46,.45,.94)}
+input:focus{border-color:var(--focus);box-shadow:inset 0 0 1px 1px var(--focus)}
+input::selection{background:var(--selected);color:#fefefe}
+button{display:flex;align-items:center;justify-content:center;gap:8px;
+width:100%;margin-top:22px;font:inherit;font-weight:700;color:#fff;
+background:var(--suggested);border:1px solid var(--border);padding:9px 14px;min-height:38px;
+cursor:pointer}
+button:hover{opacity:.9;box-shadow:inset 0 1px 0 rgba(255,255,255,.1),inset 0 -1px 0 rgba(0,0,0,.1)}
+button:active{opacity:1;filter:brightness(.88);box-shadow:inset 0 1px 2px rgba(0,0,0,.3)}
+button:focus-visible{outline:1px solid rgba(255,255,255,.3);outline-offset:-4px}
+button[disabled]{opacity:.55;cursor:progress;box-shadow:none}
+.notice{padding:9px 12px;margin:0 0 4px;font-size:10pt;color:var(--text);
+border:1px solid var(--border);border-left-width:3px}
+.notice.error{background:rgba(178,95,93,.16);border-left-color:var(--error)}
+.notice.ok{background:rgba(104,164,154,.16);border-left-color:var(--success)}
+.foot{color:var(--dim);font-size:9.5pt;text-align:center;margin:18px 0 0}
+.foot a{color:var(--link)}
+.foot a:hover{color:var(--focus)}
+.progress{height:3px;background:var(--entry);overflow:hidden;margin:4px 0 20px;position:relative}
+.progress::before{content:"";position:absolute;top:0;bottom:0;width:35%;background:var(--focus);
+animation:slide 1.3s cubic-bezier(.45,.05,.55,.95) infinite}
+@keyframes slide{from{left:-35%}to{left:100%}}
+@media (prefers-reduced-motion:reduce){.progress::before{animation-duration:4s}}
 [hidden]{display:none!important}
 """
 
-ICON = ('<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-        '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>')
+ICON = ('<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">'
+        '<rect x="3" y="4" width="18" height="12"/><path d="M8 20h8M12 16v4"/></svg>')
 
 CSP = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
        "connect-src 'self'; img-src 'self' data:; form-action 'self'; "
@@ -498,14 +508,15 @@ def page(title, body, script=""):
     doc = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
 <meta name="robots" content="noindex">
 <title>{html.escape(title)} · {t}</title>
 <style>{CSS}</style></head>
-<body><main><div class="card">
-<div class="brand">{ICON}<div><div class="name">{t}</div><div class="sub">Remote desktop</div></div></div>
+<body><main><div class="window">
+<div class="headerbar">{ICON}<div><div class="title">{t}</div><div class="subtitle">Remote desktop</div></div></div>
+<div class="content">
 {body}
-</div></main>{('<script>' + script + '</script>') if script else ''}</body></html>"""
+</div></div></main>{('<script>' + script + '</script>') if script else ''}</body></html>"""
     return doc.encode()
 
 
@@ -537,7 +548,7 @@ var b=document.getElementById('b');b.disabled=true;b.textContent='Signing in\\u2
 
 
 def starting_page(next_url):
-    body = f"""<div class="spinner" id="spin" role="progressbar" aria-label="Starting"></div>
+    body = f"""<div class="progress" id="spin" role="progressbar" aria-label="Starting"></div>
 <h1 id="h">Starting your desktop</h1>
 <p class="lead" id="m">This usually takes a few seconds.</p>
 <div class="notice error" id="err" role="alert" hidden></div>

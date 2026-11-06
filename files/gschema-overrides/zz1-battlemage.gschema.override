@@ -25,6 +25,10 @@ opacity=238
 rounded-corners=3
 static-blur=false
 
+[org.gnome.shell.extensions.blur-my-shell.applications]
+preserve-shell-theme=true
+rouned-corners=3
+
 [org.gnome.login-screen]
 logo=''
 
