@@ -1,5 +1,5 @@
-# TLS front for Selkies. Browse to https://<host> and log in with your
-# system account; you get your own desktop.
+# TLS front for Selkies. Browse to https://<host>, sign in with your system
+# account on the sign-in page, and you get your own desktop.
 # (Fedora's caddy.service already has CAP_NET_BIND_SERVICE for port 443.)
 {
 	auto_https off
@@ -14,9 +14,13 @@
 		# Never trust a username the browser sends itself
 		request_header -X-Remote-User
 
-		# selkies-pam-auth checks the login against PAM and starts the
-		# user's desktop. 401 (login prompt) and 503 (still starting)
-		# go back to the browser as they are.
+		# The sign-in portal (sign-in page, "starting" page, status, sign-out)
+		# is served by selkies-pam-auth itself, no session needed.
+		reverse_proxy /__selkies/* unix//run/selkies-auth/auth.sock
+
+		# Everything else: selkies-pam-auth checks the session cookie and
+		# starts the user's desktop. Page loads without a session are sent
+		# to the sign-in page; while the desktop starts, to the starting page.
 		forward_auth unix//run/selkies-auth/auth.sock {
 			uri /auth
 			copy_headers X-Remote-User
@@ -28,8 +32,6 @@
 		reverse_proxy unix//run/selkies/{http.request.header.X-Remote-User}.sock {
 			# Don't buffer the stream
 			flush_interval -1
-			# Selkies doesn't need the system password: don't pass it on
-			header_up -Authorization
 		}
 	}
 }

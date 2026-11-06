@@ -1,14 +1,24 @@
 #!/usr/bin/python3 -I
 """
-selkies-pam-auth: HTTP Basic auth checked against PAM, for Caddy's forward_auth.
+selkies-pam-auth: web sign-in portal for Selkies desktops, checked against PAM.
 
-Caddy sends each request's headers here first. We answer:
-  200 + X-Remote-User  the credentials pass PAM (auth + account), the user is
-                       allowed in, and their desktop is up (started on demand)
-  401 + WWW-Authenticate: Basic   bad or missing credentials (Caddy relays it)
-  503 + auto-refresh page         the user's desktop is still starting
+Caddy sends every request here first (forward_auth to /auth) and proxies the
+portal's own pages (/__selkies/*) straight here. Sign-in is a normal web form;
+a successful sign-in sets a session cookie, so the password is sent once, not
+with every request.
 
-Each user gets their own desktop. On a user's first request we start:
+  /auth                     forward_auth check for everything else:
+                              200 + X-Remote-User   signed in, desktop is up
+                              302 -> sign-in page   page load, not signed in
+                              302 -> starting page  page load, desktop starting
+                              401 / 503             other requests (websockets,
+                                                    fetches) in those cases
+  /__selkies/login          GET: the sign-in form. POST: check it against PAM.
+  /__selkies/starting       "Starting your desktop" page; moves on when ready
+  /__selkies/status         JSON for that page: ready / starting / failed
+  /__selkies/logout         end the web session (the desktop keeps running)
+
+Each user gets their own desktop. Starting one means:
   selkies-proxy@<user>.socket          root-owned /run/selkies/<user>.sock that
                                        Caddy connects to; it hands connections
                                        to a proxy running *as that user*
@@ -18,18 +28,23 @@ Each user gets their own desktop. On a user's first request we start:
 
 Listens only on a Unix socket that the caddy group can reach. Runs as root
 because pam_unix can only check other users' passwords as root, and to start
-the units above.
+the units above. Sessions live in memory: restarting this service signs
+everyone out (their desktops keep running).
 
 Config (optional), /etc/selkies/auth.env:
-  SELKIES_AUTH_GROUP=selkies-users,wheel   members of these groups may log in
+  SELKIES_AUTH_GROUP=selkies-users,wheel   members of these groups may sign in
                                            (default; comma-separated)
   SELKIES_AUTH_USERS=alice,bob             plus these users
+  SELKIES_PORTAL_TITLE=My Desktop          name on the sign-in page
+                                           (default: the host name)
+  SELKIES_SESSION_IDLE_HOURS=12            sign out after this long unused
+  SELKIES_SESSION_MAX_HOURS=168            and always after this long
 """
 
-import base64
 import grp
 import hashlib
-import hmac
+import html
+import json
 import os
 import pwd
 import re
@@ -40,6 +55,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from collections import defaultdict
 from ctypes import (CDLL, CFUNCTYPE, POINTER, Structure, c_char_p, c_int,
                     c_size_t, c_void_p, cast, sizeof)
@@ -48,18 +64,21 @@ from http.server import BaseHTTPRequestHandler
 
 SOCKET = os.environ.get("SELKIES_AUTH_SOCKET", "/run/selkies-auth/auth.sock")
 PAM_SERVICE = os.environ.get("SELKIES_AUTH_PAM_SERVICE", "selkies").encode()
-CONFIG = "/etc/selkies/auth.env"
-REALM = "Selkies"
+CONFIG = os.environ.get("SELKIES_AUTH_CONFIG", "/etc/selkies/auth.env")
+FRONT_DIR = os.environ.get("SELKIES_AUTH_FRONT_DIR", "/run/selkies")    # per-user front sockets
+RUNTIME_DIR = os.environ.get("SELKIES_AUTH_RUNTIME_DIR", "/run/user")   # users' Selkies sockets
 
-CACHE_TTL = 300          # seconds a successful login is remembered
-FAIL_LIMIT = 5           # failures per client before a lockout
+PORTAL = "/__selkies"
+COOKIE = "__Host-selkies-session"   # __Host-: Secure, Path=/, no Domain, enforced by browsers
+
+FAIL_LIMIT = 5           # failed sign-ins per client before a lockout
 FAIL_WINDOW = 300        # ...counted over this many seconds
 LOCKOUT = 60             # seconds locked out
 FAIL_DELAY = 1.5         # pause on every failure
+MAX_FORM = 8192          # bytes accepted in a sign-in POST
 
 DEFAULT_GROUP = "selkies-users,wheel"
-START_WAIT = int(os.environ.get("SELKIES_AUTH_START_WAIT", "40"))  # seconds to hold a request while a desktop starts
-RUNTIME_DIR = os.environ.get("SELKIES_AUTH_RUNTIME_DIR", "/run/user")  # where users' Selkies sockets live
+START_TIMEOUT = int(os.environ.get("SELKIES_AUTH_START_WAIT", "120"))  # seconds for a desktop to come up
 # Safe for unit instance names and socket paths; no leading dot or dash
 USERNAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,31}$")
 
@@ -203,11 +222,38 @@ def user_allowed(username: str) -> bool:
     return False
 
 
+
+# Config is read on every request; cache it briefly
+_read_config_uncached = read_config
+_cfg_cache = {"t": 0.0, "v": {}}
+
+
+def read_config():  # noqa: F811 (replaces the uncached version above)
+    now = time.monotonic()
+    if now - _cfg_cache["t"] > 5:
+        _cfg_cache["v"] = _read_config_uncached()
+        _cfg_cache["t"] = now
+    return _cfg_cache["v"]
+
+
+def cfg_hours(key, default):
+    try:
+        return max(0.05, float(read_config().get(key, default)))
+    except ValueError:
+        return default
+
+
+def portal_title():
+    return read_config().get("SELKIES_PORTAL_TITLE") or socket.gethostname()
+
+
 # --------------------------------------------------------------------------
-# Starting a user's desktop on demand
+# Starting a user's desktop (in the background)
 # --------------------------------------------------------------------------
 
 _start_locks = defaultdict(threading.Lock)
+_state_lock = threading.Lock()
+_starts = {}   # username -> {"thread": Thread, "error": str | None}
 
 
 def systemctl(*args):
@@ -253,64 +299,122 @@ def selkies_live(uid):
             return False
 
 
-def ensure_desktop(username):
-    """Make sure the user's desktop and front socket are up. Returns True when
-    Selkies is answering, False if it didn't come up within START_WAIT."""
-    uid = pwd.getpwnam(username).pw_uid
-    if selkies_live(uid) and os.path.exists(f"/run/selkies/{username}.sock"):
-        return True
-    with _start_locks[username]:  # one starter per user; others wait here
-        systemctl("start", f"selkies-proxy@{username}.socket")
-        if selkies_live(uid):
-            return True
-        if has_local_graphical_session(uid):
-            log(f"{username} has a local session; waiting for its Selkies")
-        else:
-            log(f"starting a headless desktop for {username}")
-            systemctl("start", "--no-block", f"gnome-headless-session@{username}.service")
-        deadline = time.monotonic() + START_WAIT
-        while time.monotonic() < deadline:
-            if selkies_live(uid):
-                log(f"{username}'s desktop is up")
-                return True
-            time.sleep(0.5)
-    return False
+def desktop_ready(username):
+    try:
+        uid = pwd.getpwnam(username).pw_uid
+    except KeyError:
+        return False
+    return selkies_live(uid) and os.path.exists(os.path.join(FRONT_DIR, f"{username}.sock"))
+
+
+def _start_desktop(username):
+    """Background thread: bring the user's desktop up, or record why not."""
+    error = None
+    try:
+        uid = pwd.getpwnam(username).pw_uid
+        with _start_locks[username]:
+            if not desktop_ready(username):
+                systemctl("start", f"selkies-proxy@{username}.socket")
+                if not selkies_live(uid):
+                    if has_local_graphical_session(uid):
+                        log(f"{username} has a local session; waiting for its Selkies")
+                    else:
+                        log(f"starting a headless desktop for {username}")
+                        systemctl("start", "--no-block",
+                                  f"gnome-headless-session@{username}.service")
+                deadline = time.monotonic() + START_TIMEOUT
+                while not desktop_ready(username):
+                    if time.monotonic() > deadline:
+                        error = ("Your desktop didn't start in time. "
+                                 "Try again, or ask an administrator to check the logs.")
+                        log(f"{username}'s desktop didn't come up within {START_TIMEOUT}s")
+                        break
+                    time.sleep(0.5)
+                else:
+                    log(f"{username}'s desktop is up")
+    except Exception as e:  # never let a start failure kill the thread silently
+        error = "Your desktop couldn't be started."
+        log(f"could not start {username}'s desktop: {e}")
+    with _state_lock:
+        _starts[username]["error"] = error
+
+
+def desktop_state(username, retry=False):
+    """('ready'|'starting'|'failed', message). Starts the desktop if needed;
+    never blocks."""
+    if desktop_ready(username):
+        return "ready", None
+    with _state_lock:
+        st = _starts.get(username)
+        if st and st["thread"].is_alive():
+            return "starting", None
+        if st and st["error"] and not retry:
+            return "failed", st["error"]
+        t = threading.Thread(target=_start_desktop, args=(username,), daemon=True)
+        _starts[username] = {"thread": t, "error": None}
+        t.start()
+    return "starting", None
 
 
 # --------------------------------------------------------------------------
-# Caching and brute-force throttling
+# Sessions and brute-force throttling
 # --------------------------------------------------------------------------
 
 _lock = threading.Lock()
-_salt = secrets.token_bytes(32)
-_cache = {}      # digest -> (username, expiry)
+_sessions = {}   # sha256(token) -> {"user", "created", "seen"}
 _fails = {}      # client -> [timestamps]
 _locked = {}     # client -> unlock time
 
 
-def _digest(header_value: str) -> bytes:
-    return hmac.new(_salt, header_value.encode(), hashlib.sha256).digest()
+def _key(token):
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
-def cached_user(header_value):
-    d = _digest(header_value)
+def new_session(username):
+    token = secrets.token_urlsafe(32)
+    now = time.time()
     with _lock:
-        hit = _cache.get(d)
-        if hit and hit[1] > time.monotonic():
-            return hit[0]
-        _cache.pop(d, None)
-    return None
+        _sessions[_key(token)] = {"user": username, "created": now, "seen": now}
+    return token
 
 
-def remember(header_value, username):
+def session_user(token):
+    """The signed-in user for this cookie value, or None."""
+    if not token or len(token) > 100:
+        return None
+    idle = cfg_hours("SELKIES_SESSION_IDLE_HOURS", 12) * 3600
+    maximum = cfg_hours("SELKIES_SESSION_MAX_HOURS", 168) * 3600
+    now = time.time()
     with _lock:
-        _cache[_digest(header_value)] = (username, time.monotonic() + CACHE_TTL)
+        s = _sessions.get(_key(token))
+        if not s:
+            return None
+        if now - s["seen"] > idle or now - s["created"] > maximum:
+            del _sessions[_key(token)]
+            return None
+        s["seen"] = now
+        user = s["user"]
+    # Still a valid account that may sign in? (group changes apply at once)
+    try:
+        pwd.getpwnam(user)
+    except KeyError:
+        return None
+    return user if user_allowed(user) else None
+
+
+def end_session(token):
+    if token:
+        with _lock:
+            _sessions.pop(_key(token), None)
+
+
+def session_max_age():
+    return int(cfg_hours("SELKIES_SESSION_MAX_HOURS", 168) * 3600)
 
 
 def locked_out(client):
     with _lock:
-        until = _locked.get(client, 0)
-        return until > time.monotonic()
+        return _locked.get(client, 0) > time.monotonic()
 
 
 def record_failure(client):
@@ -322,7 +426,155 @@ def record_failure(client):
         if len(recent) >= FAIL_LIMIT:
             _locked[client] = now + LOCKOUT
             _fails[client] = []
-            log(f"locking out {client} for {LOCKOUT}s after {FAIL_LIMIT} failures")
+            log(f"locking out {client} for {LOCKOUT}s after {FAIL_LIMIT} failed sign-ins")
+
+
+def clear_failures(client):
+    with _lock:
+        _fails.pop(client, None)
+
+
+# --------------------------------------------------------------------------
+# Pages
+# --------------------------------------------------------------------------
+
+CSS = """
+:root{--bg:#eef1f5;--card:#fff;--text:#16191f;--muted:#5d6675;--line:#d6dbe3;
+--field:#fff;--accent:#2f6fde;--accent-hover:#255cc0;--accent-text:#fff;
+--err-bg:#fdecec;--err-text:#9b1c1c;--ok-bg:#e9f5ee;--ok-text:#17603a;--focus:#2f6fde55}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1217;--card:#1a1f27;--text:#e8ebf0;
+--muted:#9aa3b2;--line:#2c3440;--field:#12161c;--accent:#5b8ff0;--accent-hover:#7aa4f3;
+--accent-text:#0b1220;--err-bg:#3a1a1c;--err-text:#ffb4b4;--ok-bg:#15301f;--ok-text:#9be2b5;
+--focus:#5b8ff066}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);
+font:15px/1.5 system-ui,-apple-system,"Segoe UI",Cantarell,Roboto,sans-serif;
+display:flex;align-items:center;justify-content:center;padding:24px 16px}
+main{width:100%;max-width:380px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+padding:32px 28px;box-shadow:0 1px 2px #0000000d,0 8px 24px #00000012}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.brand svg{flex:none;color:var(--accent)}
+.brand .name{font-weight:600;font-size:16px;line-height:1.25;word-break:break-word}
+.brand .sub{color:var(--muted);font-size:13px}
+h1{font-size:22px;line-height:1.3;margin:0 0 4px;font-weight:650}
+p.lead{color:var(--muted);margin:0 0 22px}
+label{display:block;font-weight:550;font-size:13.5px;margin:14px 0 6px}
+input{width:100%;font:inherit;color:var(--text);background:var(--field);
+border:1px solid var(--line);border-radius:9px;padding:10px 12px;outline:none}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
+button,.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+width:100%;margin-top:22px;font:inherit;font-weight:600;color:var(--accent-text);
+background:var(--accent);border:0;border-radius:9px;padding:11px 14px;cursor:pointer;
+text-decoration:none}
+button:hover,.button:hover{background:var(--accent-hover)}
+button:focus-visible,.button:focus-visible{outline:none;box-shadow:0 0 0 3px var(--focus)}
+button[disabled]{opacity:.7;cursor:progress}
+.button.secondary{background:transparent;color:var(--accent);border:1px solid var(--line)}
+.notice{border-radius:9px;padding:10px 12px;margin:0 0 6px;font-size:14px}
+.notice.error{background:var(--err-bg);color:var(--err-text)}
+.notice.ok{background:var(--ok-bg);color:var(--ok-text)}
+.foot{color:var(--muted);font-size:12.5px;text-align:center;margin-top:18px}
+.foot a{color:inherit}
+.spinner{width:38px;height:38px;border-radius:50%;border:3px solid var(--line);
+border-top-color:var(--accent);animation:spin .9s linear infinite;margin:6px 0 20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:3s}}
+[hidden]{display:none!important}
+"""
+
+ICON = ('<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>')
+
+CSP = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+       "connect-src 'self'; img-src 'self' data:; form-action 'self'; "
+       "frame-ancestors 'none'; base-uri 'none'")
+
+
+def page(title, body, script=""):
+    t = html.escape(portal_title())
+    doc = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>{html.escape(title)} · {t}</title>
+<style>{CSS}</style></head>
+<body><main><div class="card">
+<div class="brand">{ICON}<div><div class="name">{t}</div><div class="sub">Remote desktop</div></div></div>
+{body}
+</div></main>{('<script>' + script + '</script>') if script else ''}</body></html>"""
+    return doc.encode()
+
+
+def login_page(next_url, username="", error=None, notice=None):
+    msg = ""
+    if error:
+        msg = f'<div class="notice error" role="alert">{html.escape(error)}</div>'
+    elif notice:
+        msg = f'<div class="notice ok" role="status">{html.escape(notice)}</div>'
+    body = f"""<h1>Sign in</h1>
+<p class="lead">Use your account on this computer.</p>
+{msg}
+<form method="post" action="{PORTAL}/login" id="f" novalidate>
+<input type="hidden" name="next" value="{html.escape(next_url)}">
+<label for="u">Username</label>
+<input id="u" name="username" value="{html.escape(username)}" autocomplete="username"
+ autocapitalize="none" autocorrect="off" spellcheck="false" required {'' if username else 'autofocus'}>
+<label for="p">Password</label>
+<input id="p" name="password" type="password" autocomplete="current-password" required {'autofocus' if username else ''}>
+<button type="submit" id="b">Sign in</button>
+</form>
+<p class="foot">Your desktop starts after you sign in.</p>"""
+    script = """document.getElementById('f').addEventListener('submit',function(e){
+var u=document.getElementById('u'),p=document.getElementById('p');
+if(!u.value){e.preventDefault();u.focus();return}
+if(!p.value){e.preventDefault();p.focus();return}
+var b=document.getElementById('b');b.disabled=true;b.textContent='Signing in\\u2026';});"""
+    return page("Sign in", body, script)
+
+
+def starting_page(next_url):
+    body = f"""<div class="spinner" id="spin" role="progressbar" aria-label="Starting"></div>
+<h1 id="h">Starting your desktop</h1>
+<p class="lead" id="m">This usually takes a few seconds.</p>
+<div class="notice error" id="err" role="alert" hidden></div>
+<button type="button" id="retry" hidden>Try again</button>
+<p class="foot"><a href="{PORTAL}/logout">Sign out</a></p>"""
+    script = """(function(){
+var next=%s,t0=Date.now(),busy=false;
+var h=document.getElementById('h'),m=document.getElementById('m'),
+    err=document.getElementById('err'),retry=document.getElementById('retry'),
+    spin=document.getElementById('spin');
+function poll(again){
+  if(busy)return;busy=true;
+  fetch('%s/status'+(again?'?retry=1':''),{credentials:'same-origin',cache:'no-store'})
+  .then(function(r){if(r.status===401){location.replace('%s/login');throw 0}return r.json()})
+  .then(function(s){
+    busy=false;
+    if(s.state==='ready'){location.replace(next);return}
+    if(s.state==='failed'){spin.hidden=true;h.textContent='Couldn\\u2019t start your desktop';
+      m.hidden=true;err.textContent=s.message;err.hidden=false;retry.hidden=false;return}
+    if(Date.now()-t0>45000){m.textContent='This is taking longer than usual. Hang on\\u2026'}
+    setTimeout(poll,1500);
+  }).catch(function(e){busy=false;if(e!==0)setTimeout(poll,3000)});
+}
+retry.addEventListener('click',function(){retry.hidden=true;err.hidden=true;spin.hidden=false;
+  h.textContent='Starting your desktop';m.hidden=false;m.textContent='Trying again\\u2026';t0=Date.now();poll(true)});
+poll(false);
+})();""" % (json.dumps(next_url), PORTAL, PORTAL)
+    return page("Starting your desktop", body, script)
+
+
+def safe_next(value):
+    """Only same-site paths; never back into the portal itself."""
+    v = (value or "").strip()
+    if (not v.startswith("/") or v.startswith("//") or v.startswith("/\\")
+            or v.startswith(PORTAL) or len(v) > 2000 or any(c in v for c in "\r\n\0")):
+        return "/"
+    return v
 
 
 # --------------------------------------------------------------------------
@@ -330,8 +582,9 @@ def record_failure(client):
 # --------------------------------------------------------------------------
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "selkies-pam-auth"
+    server_version = "selkies-portal"
     sys_version = ""
+    protocol_version = "HTTP/1.1"
 
     def address_string(self):
         return self.client()
@@ -339,84 +592,202 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # only log what matters, below
 
+    # -- request helpers -----------------------------------------------
+
     def client(self):
         fwd = self.headers.get("X-Forwarded-For", "")
         return fwd.split(",")[0].strip() or "unknown"
 
-    def deny(self, why=None):
-        if why:
-            log(f"denied {self.client()}: {why}")
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", f'Basic realm="{REALM}", charset="UTF-8"')
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+    def cookie(self):
+        for part in self.headers.get("Cookie", "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == COOKIE:
+                return value
+        return None
 
-    def allow(self, username):
-        try:
-            ready = ensure_desktop(username)
-        except Exception as e:  # never let a start failure look like a login
-            log(f"could not start {username}'s desktop: {e}")
-            ready = False
-        if not ready:
-            return self.starting()
-        self.send_response(200)
-        self.send_header("X-Remote-User", username)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+    def query(self):
+        return urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
 
-    def starting(self):
-        body = (b"<!doctype html><meta charset=utf-8>"
-                b"<meta http-equiv=refresh content=5>"
-                b"<title>Starting your desktop</title>"
-                b"<body style='font:16px system-ui;margin:3em'>"
-                b"<p>Starting your desktop&hellip; this page reloads by itself.</p>")
-        self.send_response(503)
-        self.send_header("Retry-After", "5")
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+    def same_origin(self):
+        """POSTs (and sign-out) must come from this site's own pages."""
+        site = self.headers.get("Sec-Fetch-Site")
+        if site in ("same-origin", "none"):
+            return True
+        origin = self.headers.get("Origin")
+        host = self.headers.get("Host", "")
+        if origin:
+            return origin == f"https://{host}"
+        return site is None and self.command == "GET"
+
+    def is_page_load(self):
+        """A browser loading a page (so a redirect makes sense), as opposed
+        to a websocket, fetch or asset request."""
+        if self.headers.get("Upgrade"):
+            return False
+        if self.headers.get("X-Forwarded-Method", "GET") not in ("GET", "HEAD"):
+            return False
+        mode = self.headers.get("Sec-Fetch-Mode")
+        if mode:
+            return mode == "navigate"
+        return "text/html" in self.headers.get("Accept", "")
+
+    # -- responses ------------------------------------------------------
+
+    def send(self, status, body=b"", ctype="text/html; charset=utf-8", headers=()):
+        self.send_response(status)
+        for k, v in headers:
+            self.send_header(k, v)
+        if body:
+            self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        if ctype.startswith("text/html"):
+            self.send_header("Content-Security-Policy", CSP)
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
-        if self.command != "HEAD":
+        if body and self.command != "HEAD":
             self.wfile.write(body)
 
-    def handle_any(self):
-        client = self.client()
-        header = self.headers.get("Authorization", "")
-        if not header.startswith("Basic "):
-            return self.deny()  # first visit: browser shows the login prompt
+    def redirect(self, location, status=302, headers=()):
+        self.send(status, headers=[("Location", location), *headers])
 
-        user = cached_user(header)
-        if user and user_allowed(user):
-            return self.allow(user)
+    def set_cookie(self, token):
+        return ("Set-Cookie", f"{COOKIE}={token}; Path=/; Secure; HttpOnly; "
+                              f"SameSite=Strict; Max-Age={session_max_age()}")
+
+    def clear_cookie(self):
+        return ("Set-Cookie", f"{COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0")
+
+    # -- routing --------------------------------------------------------
+
+    def do_GET(self):
+        path = urllib.parse.urlsplit(self.path).path
+        if path == "/auth":
+            return self.check()
+        if path == f"{PORTAL}/login":
+            q = self.query()
+            nxt = safe_next(q.get("next", ["/"])[0])
+            if session_user(self.cookie()):
+                return self.redirect(nxt)
+            notice = "You've been signed out." if "signed_out" in q else None
+            return self.send(200, login_page(nxt, notice=notice))
+        if path == f"{PORTAL}/starting":
+            nxt = safe_next(self.query().get("next", ["/"])[0])
+            if not session_user(self.cookie()):
+                return self.redirect(f"{PORTAL}/login?next={urllib.parse.quote(nxt)}")
+            return self.send(200, starting_page(nxt))
+        if path == f"{PORTAL}/status":
+            user = session_user(self.cookie())
+            if not user:
+                return self.send(401, b'{"state":"signed-out"}', "application/json")
+            state, message = desktop_state(user, retry="retry" in self.query())
+            return self.send(200, json.dumps({"state": state, "message": message}).encode(),
+                             "application/json")
+        if path == f"{PORTAL}/logout":
+            if not self.same_origin():
+                return self.send(403, b"Forbidden", "text/plain")
+            return self.logout()
+        return self.send(404, b"Not found", "text/plain")
+
+    do_HEAD = do_GET
+
+    def do_POST(self):
+        # Always consume the body first: an unread body left on a kept-alive
+        # connection would be misread as the next request.
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            n = -1
+        if n < 0 or n > MAX_FORM:
+            self.close_connection = True
+            return self.send(413, b"Too large", "text/plain", headers=[("Connection", "close")])
+        self.body = self.rfile.read(n) if n else b""
+        path = urllib.parse.urlsplit(self.path).path
+        if path == f"{PORTAL}/login":
+            return self.login()
+        if path == f"{PORTAL}/logout":
+            if not self.same_origin():
+                return self.send(403, b"Forbidden", "text/plain")
+            return self.logout()
+        if path == "/auth":   # forward_auth may use the original method
+            return self.check()
+        return self.send(404, b"Not found", "text/plain")
+
+    # -- handlers -------------------------------------------------------
+
+    def check(self):
+        """forward_auth: is this request from a signed-in user whose desktop is up?"""
+        user = session_user(self.cookie())
+        original = self.headers.get("X-Forwarded-Uri", "/")
+        if not user:
+            if self.is_page_load():
+                return self.redirect(f"{PORTAL}/login?next={urllib.parse.quote(safe_next(original))}")
+            return self.send(401, b"Not signed in", "text/plain")
+        state, _ = desktop_state(user)
+        if state == "ready":
+            return self.send(200, headers=[("X-Remote-User", user)])
+        if self.is_page_load():
+            return self.redirect(f"{PORTAL}/starting?next={urllib.parse.quote(safe_next(original))}")
+        return self.send(503, b"Desktop not ready", "text/plain", headers=[("Retry-After", "3")])
+
+    def login(self):
+        if not self.same_origin():
+            return self.send(403, b"Forbidden", "text/plain")
+        form = urllib.parse.parse_qs(self.body.decode("utf-8", "replace"),
+                                     keep_blank_values=True)
+        username = form.get("username", [""])[0].strip()
+        password = form.get("password", [""])[0]
+        nxt = safe_next(form.get("next", ["/"])[0])
+        client = self.client()
 
         if locked_out(client):
-            return self.deny("locked out")
+            return self.send(429, login_page(nxt, username,
+                             "Too many failed attempts. Wait a minute, then try again."))
+        if not username or not password:
+            return self.send(200, login_page(nxt, username, "Enter your username and password."))
 
-        try:
-            raw = base64.b64decode(header[6:].strip(), validate=True).decode("utf-8")
-            username, password = raw.split(":", 1)
-        except (ValueError, UnicodeDecodeError):
-            return self.deny("malformed Authorization header")
+        ok = False
+        if USERNAME_RE.match(username) and "\0" not in password and len(password) <= 1024:
+            ok, reason = pam_check(username, password)
+        else:
+            reason = "invalid username"
+        if ok and not user_allowed(username):
+            log(f"refused {username} from {client}: not allowed to use the web desktop")
+            record_failure(client)
+            time.sleep(FAIL_DELAY)
+            return self.send(200, login_page(nxt, username,
+                             "This account isn't allowed to use the remote desktop."))
+        if not ok:
+            log(f"failed sign-in for {username!r} from {client}: {reason}")
+            record_failure(client)
+            time.sleep(FAIL_DELAY)
+            return self.send(200, login_page(nxt, username, "Incorrect username or password."))
 
-        if not username or not password or "\0" in raw:
-            return self.deny("empty credentials")
+        clear_failures(client)
+        token = new_session(username)
+        log(f"signed in {username} from {client}")
+        desktop_state(username)                 # start it now, in the background
+        return self.redirect(nxt, 303, [self.set_cookie(token)])
 
-        ok, reason = pam_check(username, password)
-        if ok and user_allowed(username):
-            remember(header, username)
-            log(f"login {username} from {client}")
-            return self.allow(username)
-
-        record_failure(client)
-        time.sleep(FAIL_DELAY)
-        if ok:
-            return self.deny(f"{username} is not allowed to use the web desktop")
-        return self.deny(f"{username}: {reason}")
-
-    do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = do_OPTIONS = handle_any
+    def logout(self):
+        token = self.cookie()
+        user = session_user(token)
+        end_session(token)
+        if user:
+            log(f"signed out {user} from {self.client()}")
+        return self.redirect(f"{PORTAL}/login?signed_out=1", 303, [self.clear_cookie()])
 
 
 class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+            return  # the client went away; nothing to report
+        log(f"error handling a request: {exc!r}")
 
 
 def main():
@@ -432,8 +803,8 @@ def main():
         os.umask(old)
     try:
         os.chown(SOCKET, 0, grp.getgrnam("caddy").gr_gid)
-    except KeyError:
-        log("no 'caddy' group; socket left root-only")
+    except (KeyError, PermissionError):
+        log("could not hand the socket to the 'caddy' group; left as is")
     os.chmod(SOCKET, 0o660)
     log(f"listening on {SOCKET} (PAM service '{PAM_SERVICE.decode()}')")
     srv.serve_forever()
