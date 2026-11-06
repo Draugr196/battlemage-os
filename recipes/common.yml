@@ -101,10 +101,6 @@ modules:
         - gnome-boxes
         - gnome-software
         
-  - type: brew
-    brew-analytics: false
-    auto-update: true
-
   - type: systemd
     system:
       enabled:

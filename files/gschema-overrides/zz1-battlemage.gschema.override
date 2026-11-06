@@ -1,5 +1,5 @@
 [org.gnome.shell]
-enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'dash-to-panel@jderose9.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'caffeine@patapon.info', 'ding@rastersoft.com'i, 'blur-my-shell@aunetx']
+enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'dash-to-panel@jderose9.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'caffeine@patapon.info', 'ding@rastersoft.com', 'blur-my-shell@aunetx']
 favorite-apps=['librewolf.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.TextEditor.desktop', 'io.github.kolunmi.Bazaar.desktop', 'com.ranfdev.DistroShelf.desktop']
 
 [org.gnome.desktop.wm.preferences]
