@@ -1,13 +1,13 @@
 [org.gnome.shell]
-enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'dash-to-panel@jderose9.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'caffeine@patapon.info', 'ding@rastersoft.com']
+enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'dash-to-panel@jderose9.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'caffeine@patapon.info', 'ding@rastersoft.com'i, 'blur-my-shell@aunetx']
 favorite-apps=['librewolf.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.TextEditor.desktop', 'io.github.kolunmi.Bazaar.desktop', 'com.ranfdev.DistroShelf.desktop']
 
 [org.gnome.desktop.wm.preferences]
 button-layout='appmenu:minimize,maximize,close'
-theme='Squared'
+theme='Battlemage'
 
 [org.gnome.desktop.interface]
-gtk-theme='Squared'
+gtk-theme='Battlemage'
 monospace-font-name='Hack Nerd Font Mono 10'
 document-font-name='Hack Nerd Font Mono 11'
 font-name='Hack Nerd Font Mono 11'
@@ -15,7 +15,7 @@ icon-theme='Papirus'
 color-scheme='prefer-dark'
 
 [org.gnome.shell.extensions.user-theme]
-name='Squared'
+name='Battlemage'
 
 [org.gnome.shell.extensions.blur-my-shell.applications]
 blur=true
