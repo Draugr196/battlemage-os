@@ -27,7 +27,7 @@ static-blur=false
 
 [org.gnome.shell.extensions.blur-my-shell.popup]
 preserve-shell-theme=true
-rouned-corners=3
+rounded-corners=3
 
 [org.gnome.login-screen]
 logo=''
