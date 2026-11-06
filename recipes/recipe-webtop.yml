@@ -1,54 +1,15 @@
 ---
-# yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
-# image will be published to ghcr.io/<user>/<name>
+
 name: battlemage-webtop
-# description will be included in the image's metadata
-description: A balanced distro for security and performance 
+description: A balanced distro for security and performance
 
-# the base image to build on top of (FROM) and the version tag to use
 base-image: ghcr.io/ublue-os/silverblue-main
-image-version: 44 # latest is also supported if you want new updates ASAP
+image-version: 44 
 
-# module configuration, executed in order
-# you can include multiple instances of the same module
 modules:
 
   - from-file: common.yml
-  - type: files
-    files:
-      - source: webtop
-        destination: /
-  - type: dnf
-    install:
-      packages:
-        - caddy
-        - openssl
-        - https://github.com/selkies-project/selkies/releases/download/2.1.0/selkies-2.1.0-fc-x86_64.rpm
-  - type: script
-    scripts:
-      - selkies-selinux.sh
-      - selkies-checks.sh
-  - type: gschema-overrides
-    include:
-      - zz1-selkies.gschema.override
-  - type: systemd
-    system:
-      enabled:
-        - sshd.service
-        - selkies-firstboot.service
-        - selkies-firewall.service   
-        - selkies-pam-auth.service
-        - caddy.service
-      masked:
-        - sleep.target
-        - suspend.target
-        - hibernate.target
-        - hybrid-sleep.target
-    user:
-      enabled:
-        - selkies.service
-        - selkies-consent.service
-        - selkies-keep-awake.service
+  - from-file: webtop.yml
 
   - type: initramfs
 

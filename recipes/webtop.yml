@@ -1,0 +1,37 @@
+---
+modules:
+  - type: files
+    files:
+      - source: webtop
+        destination: /
+  - type: dnf
+    install:
+      packages:
+        - caddy
+        - openssl
+        - https://github.com/selkies-project/selkies/releases/download/2.1.0/selkies-2.1.0-fc-x86_64.rpm
+  - type: script
+    scripts:
+      - selkies-selinux.sh
+      - selkies-checks.sh
+  - type: gschema-overrides
+    include:
+      - zz1-selkies.gschema.override
+  - type: systemd
+    system:
+      enabled:
+        - sshd.service
+        - selkies-firstboot.service
+        - selkies-firewall.service   
+        - selkies-pam-auth.service
+        - caddy.service
+      masked:
+        - sleep.target
+        - suspend.target
+        - hibernate.target
+        - hybrid-sleep.target
+    user:
+      enabled:
+        - selkies.service
+        - selkies-consent.service
+        - selkies-keep-awake.service

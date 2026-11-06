@@ -1,0 +1,26 @@
+/*********************
+ * App Notifications *
+ *********************/
+.app-notification,
+.app-notification.frame,
+toast {
+  padding: 5px;
+  border-radius: 0px;
+  background: lighten($base_color, 6%);
+  background-clip: padding-box;
+
+  &:backdrop {
+    background-image: none;
+    transition: $backdrop_transition;
+  }
+
+  button { padding: 2px; }
+
+  //close button
+  button.circular.flat.image-button { 
+    padding: 2px;
+    &:hover { @include button(hover, $red); } 
+  }
+
+  border { border: none; }
+}

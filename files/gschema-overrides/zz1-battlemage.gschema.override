@@ -17,6 +17,14 @@ color-scheme='prefer-dark'
 [org.gnome.shell.extensions.user-theme]
 name='Squared'
 
+[org.gnome.shell.extensions.blur-my-shell.applications]
+blur=true
+dynamic-opacity=false
+enable-all=true
+opacity=238
+rounded-corners=3
+static-blur=false
+
 [org.gnome.login-screen]
 logo=''
 

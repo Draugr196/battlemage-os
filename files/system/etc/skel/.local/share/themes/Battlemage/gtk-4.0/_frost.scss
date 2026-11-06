@@ -1,0 +1,105 @@
+
+@function _tint($c) {
+  // the semi-transparent overlay that turns $bg_color into $c
+  @if lightness($c) >= lightness($bg_color) {
+    @return rgba(255, 255, 255, (lightness($c) - lightness($bg_color)) / (100% - lightness($bg_color)));
+  } @else {
+    @return rgba(0, 0, 0, (lightness($bg_color) - lightness($c)) / lightness($bg_color));
+  }
+}
+
+$_view:      _tint($base_color);                   // #1e2529
+$_view_bd:   _tint($backdrop_base_color);          // #21282c
+$_sidebar:   _tint($sidebar_bg_color);              // #191f22
+
+// The window
+window.background:not(.popup),
+window.background:not(.popup):backdrop {
+  background-color: transparentize($bg_color, 1 - $frost_opacity);
+}
+
+// Panels painted in the window colour: let the window show through
+.titlebar:not(headerbar),
+.titlebar,
+headerbar,
+.content-pane .top-bar,
+.content-pane,
+.sidebar-pane,
+.sidebar-pane .bottom-bar,
+toolbarview,
+toolbar,
+.inline-toolbar,
+searchbar > revealer > box,
+actionbar > revealer > box,
+menubar, .menubar,
+notebook > header,
+tabbar tabbox,
+paned > separator.wide,
+.source-list,
+infobar, .info, .warning, .question, .error,
+datechooser, .calendar-list,
+.nautilus-window notebook > stack:only-child,
+.nautilus-window .content-pane .view,
+.nautilus-window .content-pane iconview,
+.navigation-sidebar list,
+placessidebar list,
+#content_frame, #buttonbox_frame {
+  &, &:backdrop { background-color: transparent; }
+}
+.titlebar, headerbar,
+.titlebar:backdrop, headerbar:backdrop { background-image: none; }
+
+// Slightly lighter panels (content views, text, dialogs)
+.view, iconview, .history-view, textview > text,
+notebook > stack:not(:only-child),
+searchbar,
+.card {
+  background-color: $_view;
+}
+.view:backdrop, iconview:backdrop, .history-view:backdrop, textview > text:backdrop,
+notebook > stack:not(:only-child):backdrop,
+list, listview, list:backdrop, listview:backdrop {
+  background-color: $_view_bd;
+}
+// views nested in views would otherwise double the tint
+.view .view, .view list, list .view, listview .view,
+columnview > listview, columnview list, gridview .view,
+.nautilus-window .content-pane list,
+.nautilus-window .content-pane listview,
+.nautilus-window .content-pane columnview {
+  &, &:backdrop { background-color: transparent; }
+}
+
+// Slightly darker panels (sidebars)
+.sidebar,
+.navigation-sidebar,
+placessidebar,
+.sidebar-pane .top-bar {
+  &, &:backdrop { background-color: $_sidebar; }
+}
+.sidebar .view, .sidebar list,
+.navigation-sidebar .view, placessidebar .view {
+  &, &:backdrop { background-color: transparent; }
+}
+
+// Buttons and text fields: same colour, partly see-through
+// (low specificity on purpose: flat buttons, titlebar buttons and
+// hover / checked states keep their original rules)
+$_widget: transparentize($btn_bg, 1 - $frost_widget_opacity);
+button, button:backdrop, button:disabled, button:backdrop:disabled,
+entry, entry:backdrop, entry:disabled, entry:backdrop:disabled,
+spinbutton:not(.vertical), spinbutton:not(.vertical):backdrop,
+spinbutton:not(.vertical):disabled,
+spinbutton.vertical > text {
+  background-color: $_widget;
+}
+entry:focus-within { background-color: $_widget; }
+spinbutton:not(.vertical) > text,
+spinbutton > entry,
+combobox entry, dropdown entry { background-color: transparent; }
+
+// Fully maximised / fullscreen windows stay translucent too, so the look is
+// consistent. To make them solid again, uncomment:
+// window.background.maximized, window.background.fullscreen {
+//   &, &:backdrop { background-color: $bg_color; }
+// }

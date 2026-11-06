@@ -6111,3 +6111,126 @@ button.colorsetter {
   padding: 10px; }
 
 /*# sourceMappingURL=gtk.css.map */
+
+/* ---- Frost layer (generated from _frost.scss) ---- */
+/*$selected_bg_color: #00e8c6;06d6a0*/
+window.background:not(.popup),
+window.background:not(.popup):backdrop {
+  background-color: rgba(26, 32, 35, 0.75);
+}
+
+.titlebar:not(headerbar), .titlebar:not(headerbar):backdrop,
+.titlebar,
+.titlebar:backdrop,
+headerbar,
+headerbar:backdrop,
+.content-pane .top-bar,
+.content-pane .top-bar:backdrop,
+.content-pane,
+.content-pane:backdrop,
+.sidebar-pane,
+.sidebar-pane:backdrop,
+.sidebar-pane .bottom-bar,
+.sidebar-pane .bottom-bar:backdrop,
+toolbarview,
+toolbarview:backdrop,
+toolbar,
+toolbar:backdrop,
+.inline-toolbar,
+.inline-toolbar:backdrop,
+searchbar > revealer > box,
+searchbar > revealer > box:backdrop,
+actionbar > revealer > box,
+actionbar > revealer > box:backdrop,
+menubar,
+menubar:backdrop, .menubar, .menubar:backdrop,
+notebook > header,
+notebook > header:backdrop,
+tabbar tabbox,
+tabbar tabbox:backdrop,
+paned > separator.wide,
+paned > separator.wide:backdrop,
+.source-list,
+.source-list:backdrop,
+infobar,
+infobar:backdrop, .info, .info:backdrop, .warning, .warning:backdrop, .question, .question:backdrop, .error, .error:backdrop,
+datechooser,
+datechooser:backdrop, .calendar-list, .calendar-list:backdrop,
+.nautilus-window notebook > stack:only-child,
+.nautilus-window notebook > stack:only-child:backdrop,
+.nautilus-window .content-pane .view,
+.nautilus-window .content-pane .view:backdrop,
+.nautilus-window .content-pane iconview,
+.nautilus-window .content-pane iconview:backdrop,
+.navigation-sidebar list,
+.navigation-sidebar list:backdrop,
+placessidebar list,
+placessidebar list:backdrop,
+#content_frame,
+#content_frame:backdrop, #buttonbox_frame, #buttonbox_frame:backdrop {
+  background-color: transparent;
+}
+
+.titlebar, headerbar,
+.titlebar:backdrop, headerbar:backdrop {
+  background-image: none;
+}
+
+.view, iconview, .history-view, textview > text,
+notebook > stack:not(:only-child),
+searchbar,
+.card {
+  background-color: rgba(255, 255, 255, 0.0227171);
+}
+
+.view:backdrop, iconview:backdrop, .history-view:backdrop, textview > text:backdrop,
+notebook > stack:not(:only-child):backdrop,
+list, listview, list:backdrop, listview:backdrop {
+  background-color: rgba(255, 255, 255, 0.0340757);
+}
+
+.view .view, .view .view:backdrop, .view list, .view list:backdrop, list .view, list .view:backdrop, listview .view, listview .view:backdrop,
+columnview > listview,
+columnview > listview:backdrop, columnview list, columnview list:backdrop, gridview .view, gridview .view:backdrop,
+.nautilus-window .content-pane list,
+.nautilus-window .content-pane list:backdrop,
+.nautilus-window .content-pane listview,
+.nautilus-window .content-pane listview:backdrop,
+.nautilus-window .content-pane columnview,
+.nautilus-window .content-pane columnview:backdrop {
+  background-color: transparent;
+}
+
+.sidebar, .sidebar:backdrop,
+.navigation-sidebar,
+.navigation-sidebar:backdrop,
+placessidebar,
+placessidebar:backdrop,
+.sidebar-pane .top-bar,
+.sidebar-pane .top-bar:backdrop {
+  background-color: rgba(0, 0, 0, 0.0327869);
+}
+
+.sidebar .view, .sidebar .view:backdrop, .sidebar list, .sidebar list:backdrop,
+.navigation-sidebar .view,
+.navigation-sidebar .view:backdrop, placessidebar .view, placessidebar .view:backdrop {
+  background-color: transparent;
+}
+
+button, button:backdrop, button:disabled, button:backdrop:disabled,
+entry, entry:backdrop, entry:disabled, entry:backdrop:disabled,
+spinbutton:not(.vertical), spinbutton:not(.vertical):backdrop,
+spinbutton:not(.vertical):disabled,
+spinbutton.vertical > text {
+  background-color: rgba(37, 43, 46, 0.85);
+}
+
+entry:focus-within {
+  background-color: rgba(37, 43, 46, 0.85);
+}
+
+spinbutton:not(.vertical) > text,
+spinbutton > entry,
+combobox entry, dropdown entry {
+  background-color: transparent;
+}

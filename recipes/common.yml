@@ -129,6 +129,7 @@ modules:
       - 615
       - 517
       - 2087
+      - 3193
     uninstall:
       - Apps Menu
       - Background Logo
