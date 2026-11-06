@@ -25,7 +25,7 @@ opacity=238
 rounded-corners=3
 static-blur=false
 
-[org.gnome.shell.extensions.blur-my-shell.popups]
+[org.gnome.shell.extensions.blur-my-shell.popup]
 preserve-shell-theme=true
 rouned-corners=3
 
