@@ -3,7 +3,7 @@
 name: battlemage-nvidia-webtop
 description: A balanced distro for security and performance 
 
-base-image: ghcr.io/ublue-os/silverblue-main
+base-image: ghcr.io/ublue-os/silverblue-nvidia
 image-version: 44
 
 modules:
@@ -11,10 +11,10 @@ modules:
   - from-file: common.yml
   - from-file: webtop.yml
 
-  - type: akmods
-    base: main
-    nvidia-driver: nvidia-open
-    install: []
+ # - type: akmods
+  #  base: main
+  #  nvidia-driver: nvidia-open
+  #  install: []
 
 
   - type: dnf
