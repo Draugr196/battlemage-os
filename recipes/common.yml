@@ -141,8 +141,8 @@ modules:
       - rm -f /usr/share/plymouth/themes/spinner/watermark.png
       - update-crypto-policies --set BATTLEMAGE
       - rm -f /etc/dnf/protected.d/sudo.conf
-      - dnf remove -y sudo
-      - dnf remove -y sudo-python-plugin
+      - dnf remove  sudo
+      - dnf remove  sudo-python-plugin
       
   - type: default-flatpaks
     configurations:
