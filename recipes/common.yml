@@ -13,6 +13,9 @@ modules:
       - source: system
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
+  -type: script
+   snippets:
+     - rm -f /etc/dnf/protected.d/sudo.conf
   - type: dnf
     repos:
       nonfree: rpmfusion
@@ -98,6 +101,7 @@ modules:
         - gnome-shell-extension-window-list
         - gnome-boxes
         - gnome-software
+        - sudo
         
   - type: systemd
     system:
@@ -141,8 +145,8 @@ modules:
       - rm -f /usr/share/plymouth/themes/spinner/watermark.png
       - update-crypto-policies --set BATTLEMAGE
       - rm -f /etc/dnf/protected.d/sudo.conf
-      - dnf remove  sudo
-      - dnf remove  sudo-python-plugin
+      #- dnf remove  sudo
+      #- dnf remove  sudo-python-plugin
       
   - type: default-flatpaks
     configurations:
