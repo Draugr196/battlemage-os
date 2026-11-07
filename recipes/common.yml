@@ -13,10 +13,10 @@ modules:
       - source: system
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
-  - type: script
-    snippets:
-      - rm -f /etc/dnf/protected.d/sudo.conf
-      - dnf remove sudo -y
+#  - type: script
+#    snippets:
+#      - rm -f /etc/dnf/protected.d/sudo.conf
+#      - dnf remove sudo -y
   - type: dnf
     repos:
       nonfree: rpmfusion
