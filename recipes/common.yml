@@ -13,9 +13,10 @@ modules:
       - source: system
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
-  #- type: script
-  #  snippets:
-  #    - rm -f /etc/dnf/protected.d/sudo.conf
+  - type: script
+    snippets:
+      - rm -f /etc/dnf/protected.d/sudo.conf
+      - dnf remove sudo -y
   - type: dnf
     repos:
       nonfree: rpmfusion
@@ -144,8 +145,8 @@ modules:
         #- papirus-folders -C grey --theme Papirus-Dark
       - rm -f /usr/share/plymouth/themes/spinner/watermark.png
       - update-crypto-policies --set BATTLEMAGE
-      - rm -f /etc/dnf/protected.d/sudo.conf
-      - dnf remove -y sudo
+      #- rm -f /etc/dnf/protected.d/sudo.conf
+      #- dnf remove -y sudo
       #- dnf remove  sudo-python-plugin
       
   - type: default-flatpaks
