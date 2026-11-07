@@ -145,8 +145,9 @@ modules:
         #- papirus-folders -C grey --theme Papirus-Dark
       - rm -f /usr/share/plymouth/themes/spinner/watermark.png
       - update-crypto-policies --set BATTLEMAGE
-      #- rm -f /etc/dnf/protected.d/sudo.conf
-      #- dnf remove -y sudo
+      - rm -f /etc/dnf/protected.d/sudo.conf
+      - rm -f /usr/share/dnf5/libdnf.conf.d/protect-sudo.conf
+      - dnf remove -y sudo --setopt=protected_packages=,
       #- dnf remove  sudo-python-plugin
       
   - type: default-flatpaks
