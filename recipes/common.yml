@@ -101,7 +101,7 @@ modules:
         - gnome-shell-extension-window-list
         - gnome-boxes
         - gnome-software
-        - sudo
+        #- sudo
         
   - type: systemd
     system:
