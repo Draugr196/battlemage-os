@@ -7,11 +7,10 @@
 -w /etc/shadow -p wa -k identity
 -w /etc/group -p wa -k identity
 -w /etc/gshadow -p wa -k identity
--w /etc/sudoers -p wa -k sudoers
--w /etc/sudoers.d/ -p wa -k sudoers
 -w /etc/pam.d/ -p wa -k pam
 -w /etc/security/ -p wa -k pam
--w /var/log/sudo.log -p wa -k sudo_log
+-w /etc/polkit-1/ -p wa -k polkit
+-w /usr/share/polkit-1/rules.d/ -p wa -k polkit
 
 # privilege escalation
 -a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k setuid

@@ -3,6 +3,5 @@
   <short>Battle Station</short>
   <description>Only essential services and return ports should be trusted.</description>
   <service name="dhcpv6-client"/>
-  <service name="ssh"/>
   <forward/>
 </zone>

@@ -28,8 +28,21 @@ Each user gets their own desktop. Starting one means:
 
 Listens only on a Unix socket that the caddy group can reach. Runs as root
 because pam_unix can only check other users' passwords as root, and to start
-the units above. Sessions live in memory: restarting this service signs
-everyone out (their desktops keep running).
+the units above.
+
+Sign-in checks, in order: the username is well-formed, the account is on the
+allow list (groups/users below), and only then PAM. Accounts outside the
+allow list never reach PAM, so they can't be locked out through the web
+(/etc/pam.d/selkies also keeps its own pam_faillock counters, separate from
+console and SSH logins). Every failure gets the same answer.
+
+Sessions live in memory and are re-validated every SESSION_RECHECK seconds:
+the account must still exist, still be allowed, still pass pam_acct_mgmt,
+and its password hash must be unchanged. So to sign someone out:
+  gpasswd -d <user> selkies-users      takes effect on their next request
+  usermod -L <user> / passwd <user>    within SESSION_RECHECK seconds
+  systemctl restart selkies-pam-auth   everyone, at once
+Their desktops keep running in all cases.
 
 Config (optional), /etc/selkies/auth.env:
   SELKIES_AUTH_GROUP=selkies-users,wheel   members of these groups may sign in
@@ -38,7 +51,7 @@ Config (optional), /etc/selkies/auth.env:
   SELKIES_PORTAL_TITLE=My Desktop          name on the sign-in page
                                            (default: the host name)
   SELKIES_SESSION_IDLE_HOURS=12            sign out after this long unused
-  SELKIES_SESSION_MAX_HOURS=168            and always after this long
+  SELKIES_SESSION_MAX_HOURS=24             and always after this long
 """
 
 import grp
@@ -75,7 +88,19 @@ FAIL_LIMIT = 5           # failed sign-ins per client before a lockout
 FAIL_WINDOW = 300        # ...counted over this many seconds
 LOCKOUT = 60             # seconds locked out
 FAIL_DELAY = 1.5         # pause on every failure
+PRUNE_EVERY = 60         # seconds between sweeps of stale throttle entries
 MAX_FORM = 8192          # bytes accepted in a sign-in POST
+
+DEFAULT_IDLE_HOURS = 12
+DEFAULT_MAX_HOURS = 24
+SESSION_RECHECK = 300    # seconds between re-checks that an account is still valid
+SHADOW = "/etc/shadow"   # read (as root) to notice password changes and locks
+
+# pam_faillock state for the web PAM service lives here, apart from
+# /run/faillock, so web failures can't lock console or SSH logins.
+# Must match conf= in /etc/pam.d/selkies -> dir= in faillock-selkies.conf.
+FAILLOCK_DIR = os.environ.get("SELKIES_AUTH_FAILLOCK_DIR",
+                              os.path.join(os.path.dirname(SOCKET), "faillock"))
 
 DEFAULT_GROUP = "selkies-users,wheel"
 START_TIMEOUT = int(os.environ.get("SELKIES_AUTH_START_WAIT", "120"))  # seconds for a desktop to come up
@@ -148,9 +173,12 @@ _strdup.restype = c_void_p
 _strdup.argtypes = [c_char_p]
 
 
-def pam_check(username: str, password: str) -> tuple[bool, str]:
+def _pam_run(username: str, password: str | None) -> tuple[bool, str]:
+    """pam_authenticate (when a password is given) followed by pam_acct_mgmt.
+    With password=None only the account check runs: used to re-validate a
+    signed-in user without their password."""
     user_b = username.encode()
-    pass_b = password.encode()
+    pass_b = password.encode() if password is not None else None
 
     @CONV_FUNC
     def conv(n_messages, messages, p_response, _appdata):
@@ -161,10 +189,12 @@ def pam_check(username: str, password: str) -> tuple[bool, str]:
         p_response[0] = responses
         for i in range(n_messages):
             style = messages[i].contents.msg_style
-            if style == PAM_PROMPT_ECHO_OFF:
+            if style == PAM_PROMPT_ECHO_OFF and pass_b is not None:
                 responses[i].resp = _strdup(pass_b)
             elif style == PAM_PROMPT_ECHO_ON:
                 responses[i].resp = _strdup(user_b)
+            # anything else (info/error text, or a prompt we can't answer)
+            # gets a NULL response
             responses[i].resp_retcode = 0
         return PAM_SUCCESS
 
@@ -174,7 +204,9 @@ def pam_check(username: str, password: str) -> tuple[bool, str]:
     if rc != PAM_SUCCESS:
         return False, f"pam_start failed ({rc})"
     try:
-        rc = _pam_authenticate(handle, 0)
+        rc = PAM_SUCCESS
+        if pass_b is not None:
+            rc = _pam_authenticate(handle, 0)
         if rc == PAM_SUCCESS:
             # Expired, disabled or locked accounts fail here
             rc = _pam_acct_mgmt(handle, 0)
@@ -182,6 +214,29 @@ def pam_check(username: str, password: str) -> tuple[bool, str]:
         return rc == PAM_SUCCESS, reason
     finally:
         _pam_end(handle, rc)
+
+
+def pam_check(username: str, password: str) -> tuple[bool, str]:
+    return _pam_run(username, password)
+
+
+def pam_account_ok(username: str) -> bool:
+    return _pam_run(username, None)[0]
+
+
+def password_fingerprint(username: str):
+    """sha256 of the user's /etc/shadow hash field, or None if the account
+    isn't in the local shadow file (or it can't be read). A changed or locked
+    password changes the fingerprint, which ends the user's web sessions."""
+    try:
+        with open(SHADOW) as f:
+            for line in f:
+                name, sep, rest = line.partition(":")
+                if sep and name == username:
+                    return hashlib.sha256(rest.split(":", 1)[0].encode()).hexdigest()
+    except OSError:
+        pass
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -361,9 +416,10 @@ def desktop_state(username, retry=False):
 # --------------------------------------------------------------------------
 
 _lock = threading.Lock()
-_sessions = {}   # sha256(token) -> {"user", "created", "seen"}
+_sessions = {}   # sha256(token) -> {"user", "created", "seen", "checked", "fp"}
 _fails = {}      # client -> [timestamps]
 _locked = {}     # client -> unlock time
+_last_prune = 0.0
 
 
 def _key(token):
@@ -374,32 +430,54 @@ def new_session(username):
     token = secrets.token_urlsafe(32)
     now = time.time()
     with _lock:
-        _sessions[_key(token)] = {"user": username, "created": now, "seen": now}
+        _sessions[_key(token)] = {"user": username, "created": now, "seen": now,
+                                  "checked": now, "fp": password_fingerprint(username)}
     return token
+
+
+def account_still_valid(user, fp):
+    """Periodic re-check of a signed-in account: it still exists, its
+    password hash is unchanged (not changed, not locked), and PAM's account
+    stage (expiry, disabled) still passes."""
+    try:
+        pwd.getpwnam(user)
+    except KeyError:
+        return False
+    if fp is not None and password_fingerprint(user) != fp:
+        return False
+    return pam_account_ok(user)
 
 
 def session_user(token):
     """The signed-in user for this cookie value, or None."""
     if not token or len(token) > 100:
         return None
-    idle = cfg_hours("SELKIES_SESSION_IDLE_HOURS", 12) * 3600
-    maximum = cfg_hours("SELKIES_SESSION_MAX_HOURS", 168) * 3600
+    idle = cfg_hours("SELKIES_SESSION_IDLE_HOURS", DEFAULT_IDLE_HOURS) * 3600
+    maximum = cfg_hours("SELKIES_SESSION_MAX_HOURS", DEFAULT_MAX_HOURS) * 3600
     now = time.time()
+    key = _key(token)
     with _lock:
-        s = _sessions.get(_key(token))
+        s = _sessions.get(key)
         if not s:
             return None
         if now - s["seen"] > idle or now - s["created"] > maximum:
-            del _sessions[_key(token)]
+            del _sessions[key]
             return None
         s["seen"] = now
         user = s["user"]
-    # Still a valid account that may sign in? (group changes apply at once)
-    try:
-        pwd.getpwnam(user)
-    except KeyError:
+        fp = s["fp"]
+        recheck = now - s["checked"] > SESSION_RECHECK
+        if recheck:
+            s["checked"] = now   # one request does the re-check, not all of them
+    # Still allowed? (group/allow-list edits apply on the next request)
+    if not user_allowed(user):
+        end_session(token)
         return None
-    return user if user_allowed(user) else None
+    if recheck and not account_still_valid(user, fp):
+        log(f"ending {user}'s session: account no longer valid")
+        end_session(token)
+        return None
+    return user
 
 
 def end_session(token):
@@ -409,7 +487,21 @@ def end_session(token):
 
 
 def session_max_age():
-    return int(cfg_hours("SELKIES_SESSION_MAX_HOURS", 168) * 3600)
+    return int(cfg_hours("SELKIES_SESSION_MAX_HOURS", DEFAULT_MAX_HOURS) * 3600)
+
+
+def _prune(now):
+    """Drop expired throttle entries so the tables can't grow without bound
+    (an attacker rotating through an IPv6 range, for instance). Caller holds
+    _lock; `now` is monotonic."""
+    global _last_prune
+    if now - _last_prune < PRUNE_EVERY:
+        return
+    _last_prune = now
+    for c in [c for c, ts in _fails.items() if not ts or now - ts[-1] > FAIL_WINDOW]:
+        del _fails[c]
+    for c in [c for c, until in _locked.items() if until <= now]:
+        del _locked[c]
 
 
 def locked_out(client):
@@ -420,6 +512,7 @@ def locked_out(client):
 def record_failure(client):
     now = time.monotonic()
     with _lock:
+        _prune(now)
         recent = [t for t in _fails.get(client, []) if now - t < FAIL_WINDOW]
         recent.append(now)
         _fails[client] = recent
@@ -498,26 +591,42 @@ ICON = ('<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="cur
         'stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">'
         '<rect x="3" y="4" width="18" height="12"/><path d="M8 20h8M12 16v4"/></svg>')
 
-CSP = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
-       "connect-src 'self'; img-src 'self' data:; form-action 'self'; "
-       "frame-ancestors 'none'; base-uri 'none'")
+# Only the one <style> and <script> carrying this response's nonce may run:
+# nothing injected into the page can execute, even if an escape were missed.
+CSP_TEMPLATE = ("default-src 'none'; style-src 'nonce-{nonce}'; script-src 'nonce-{nonce}'; "
+                "connect-src 'self'; img-src 'self' data:; form-action 'self'; "
+                "frame-ancestors 'none'; base-uri 'none'")
+# For any HTML response that isn't one of our pages (there are none today)
+CSP_FALLBACK = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+
+
+def js_string(value):
+    """A JSON string literal that is also safe inside <script>: json.dumps
+    leaves '<', '>' and '&' alone, so '</script>' in a value would end the
+    script element. Escape them (and the JS line terminators) as \\uXXXX."""
+    return (json.dumps(value)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
 
 
 def page(title, body, script=""):
+    """-> (html bytes, Content-Security-Policy header value) for this page."""
+    nonce = secrets.token_urlsafe(16)
     t = html.escape(portal_title())
+    tag = f'<script nonce="{nonce}">{script}</script>' if script else ""
     doc = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
 <meta name="robots" content="noindex">
 <title>{html.escape(title)} · {t}</title>
-<style>{CSS}</style></head>
+<style nonce="{nonce}">{CSS}</style></head>
 <body><main><div class="window">
 <div class="headerbar">{ICON}<div><div class="title">{t}</div><div class="subtitle">Remote desktop</div></div></div>
 <div class="content">
 {body}
-</div></div></main>{('<script>' + script + '</script>') if script else ''}</body></html>"""
-    return doc.encode()
+</div></div></main>{tag}</body></html>"""
+    return doc.encode(), CSP_TEMPLATE.format(nonce=nonce)
 
 
 def login_page(next_url, username="", error=None, notice=None):
@@ -575,15 +684,21 @@ function poll(again){
 retry.addEventListener('click',function(){retry.hidden=true;err.hidden=true;spin.hidden=false;
   h.textContent='Starting your desktop';m.hidden=false;m.textContent='Trying again\\u2026';t0=Date.now();poll(true)});
 poll(false);
-})();""" % (json.dumps(next_url), PORTAL, PORTAL)
+})();""" % (js_string(next_url), PORTAL, PORTAL)
     return page("Starting your desktop", body, script)
+
+
+# Characters that may appear in a "next" path: RFC 3986 pchar/query minus
+# quotes, angle brackets, backslash, backtick and whitespace. Anything else
+# (including control characters) falls back to "/".
+NEXT_RE = re.compile(r"^/[A-Za-z0-9._~%!$&()*+,;=:@/?-]*$")
 
 
 def safe_next(value):
     """Only same-site paths; never back into the portal itself."""
     v = (value or "").strip()
-    if (not v.startswith("/") or v.startswith("//") or v.startswith("/\\")
-            or v.startswith(PORTAL) or len(v) > 2000 or any(c in v for c in "\r\n\0")):
+    if (not NEXT_RE.match(v) or v.startswith("//") or v.startswith(PORTAL)
+            or len(v) > 2000):
         return "/"
     return v
 
@@ -606,6 +721,11 @@ class Handler(BaseHTTPRequestHandler):
     # -- request helpers -----------------------------------------------
 
     def client(self):
+        # Set by Caddy from the TCP peer; Caddy (2.5+) replaces any
+        # X-Forwarded-For a client sends unless the client is in
+        # trusted_proxies, so this can't be spoofed to dodge the throttle.
+        # If you put another proxy in front of Caddy, configure
+        # trusted_proxies there or every user shares one throttle bucket.
         fwd = self.headers.get("X-Forwarded-For", "")
         return fwd.split(",")[0].strip() or "unknown"
 
@@ -653,13 +773,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         if ctype.startswith("text/html"):
-            self.send_header("Content-Security-Policy", CSP)
+            if not any(k.lower() == "content-security-policy" for k, _ in headers):
+                self.send_header("Content-Security-Policy", CSP_FALLBACK)
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         if body and self.command != "HEAD":
             self.wfile.write(body)
+
+    def send_page(self, status, page_, headers=()):
+        """Send a (html, csp) pair from page()/login_page()/starting_page()."""
+        body, csp = page_
+        return self.send(status, body, headers=[("Content-Security-Policy", csp), *headers])
 
     def redirect(self, location, status=302, headers=()):
         self.send(status, headers=[("Location", location), *headers])
@@ -683,12 +809,12 @@ class Handler(BaseHTTPRequestHandler):
             if session_user(self.cookie()):
                 return self.redirect(nxt)
             notice = "You've been signed out." if "signed_out" in q else None
-            return self.send(200, login_page(nxt, notice=notice))
+            return self.send_page(200, login_page(nxt, notice=notice))
         if path == f"{PORTAL}/starting":
             nxt = safe_next(self.query().get("next", ["/"])[0])
             if not session_user(self.cookie()):
                 return self.redirect(f"{PORTAL}/login?next={urllib.parse.quote(nxt)}")
-            return self.send(200, starting_page(nxt))
+            return self.send_page(200, starting_page(nxt))
         if path == f"{PORTAL}/status":
             user = session_user(self.cookie())
             if not user:
@@ -754,27 +880,29 @@ class Handler(BaseHTTPRequestHandler):
         client = self.client()
 
         if locked_out(client):
-            return self.send(429, login_page(nxt, username,
-                             "Too many failed attempts. Wait a minute, then try again."))
+            return self.send_page(429, login_page(nxt, username,
+                                  "Too many failed attempts. Wait a minute, then try again."))
         if not username or not password:
-            return self.send(200, login_page(nxt, username, "Enter your username and password."))
+            return self.send_page(200, login_page(nxt, username,
+                                  "Enter your username and password."))
 
-        ok = False
-        if USERNAME_RE.match(username) and "\0" not in password and len(password) <= 1024:
-            ok, reason = pam_check(username, password)
+        # Allow list first, PAM second: accounts that may not use the web
+        # desktop never reach PAM, so they can't be locked out from here and
+        # the answer never reveals whether their password was right.
+        if not USERNAME_RE.match(username):
+            ok, reason = False, "malformed username"
+        elif not user_allowed(username):
+            ok, reason = False, "not allowed to use the web desktop"
+        elif "\0" in password or len(password) > 1024:
+            ok, reason = False, "malformed password"
         else:
-            reason = "invalid username"
-        if ok and not user_allowed(username):
-            log(f"refused {username} from {client}: not allowed to use the web desktop")
-            record_failure(client)
-            time.sleep(FAIL_DELAY)
-            return self.send(200, login_page(nxt, username,
-                             "This account isn't allowed to use the remote desktop."))
+            ok, reason = pam_check(username, password)
         if not ok:
             log(f"failed sign-in for {username!r} from {client}: {reason}")
             record_failure(client)
             time.sleep(FAIL_DELAY)
-            return self.send(200, login_page(nxt, username, "Incorrect username or password."))
+            return self.send_page(200, login_page(nxt, username,
+                                  "Incorrect username or password."))
 
         clear_failures(client)
         token = new_session(username)
@@ -807,6 +935,8 @@ def main():
     except FileNotFoundError:
         pass
     os.makedirs(os.path.dirname(SOCKET), exist_ok=True)
+    # pam_faillock won't create its state directory itself
+    os.makedirs(FAILLOCK_DIR, mode=0o755, exist_ok=True)
     old = os.umask(0o117)
     try:
         srv = Server(SOCKET, Handler)

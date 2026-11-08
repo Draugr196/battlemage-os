@@ -1,5 +1,10 @@
-#%PAM-1.0
-# Web logins to the Selkies desktop. Same rules as other password logins
-# (including faillock, if your authselect profile enables it).
-auth       include      password-auth
-account    include      password-auth
+auth        required      pam_env.so
+auth        required      pam_faillock.so preauth silent conf=/etc/security/faillock-selkies.conf
+auth        sufficient    pam_unix.so nodelay
+#auth       sufficient    pam_sss.so forward_pass
+auth        [default=die] pam_faillock.so authfail conf=/etc/security/faillock-selkies.conf
+auth        required      pam_deny.so
+
+account     required      pam_faillock.so conf=/etc/security/faillock-selkies.conf
+account     required      pam_unix.so
+#account    [default=bad success=ok user_unknown=ignore] pam_sss.so
