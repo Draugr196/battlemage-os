@@ -139,9 +139,10 @@ modules:
       #- Window List
   - type: gschema-overrides
   - type: script
+    scripts:
+      - hardening-build.sh
     snippets:
       - chmod -R +x /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/
-      - hardening-build.sh
       - mkdir -p /etc/default && useradd -D -s /usr/bin/fish
         #- wget -qO- https://git.io/papirus-folders-install | sh
         #- papirus-folders -C grey --theme Papirus
