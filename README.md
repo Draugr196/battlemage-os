@@ -15,6 +15,7 @@ Nvidia Webtop: https://drive.proton.me/urls/QE08E8JGNG#tOnylFsarBm7
 ## Building an ISO
 
 New ISO builds are uploaded only after major changes You can generate your own ISO with the instructions available [here](https://blue-build.org/how-to/generate-iso/#_top).
+
 NOTE: This tool is being depreciated and will not be available for builds based on Fedora 45. Options for generating ISOs in the future are being explored.
 
 ## Verification
