@@ -3,39 +3,18 @@
 ## Installation ISO
 Premade installation ISO can be downloaded here 
 
-Base: https://drive.proton.me/urls/5NXCQMXPTR#hc8TIqrwEtQp
+Base: https://drive.proton.me/urls/N8Z0W4VAJ8#fhELqNKgU1VO
 
-Nvidia: https://drive.proton.me/urls/RE33D6BZS4#moChtrUD3U3D
+Webtop: https://drive.proton.me/urls/17F0R03G5W#dfzkNPCmVadD
 
-## Rebase on Existing System
+Nvidia: https://drive.proton.me/urls/GQJMS3HPC4#wrIUJalT5uge
 
-> [!WARNING]  
-> [This is an experimental feature](https://www.fedoraproject.org/wiki/Changes/OstreeNativeContainerStable), try at your own discretion.
+Nvidia Webtop: https://drive.proton.me/urls/QE08E8JGNG#tOnylFsarBm7
 
-To rebase an existing atomic Fedora installation to the latest build:
-
-- First rebase to the unsigned image, to get the proper signing keys and policies installed:
-  ```
-  rpm-ostree rebase ostree-unverified-registry:ghcr.io/draugr196/battlemage:latest
-  ```
-- Reboot to complete the rebase:
-  ```
-  systemctl reboot
-  ```
-- Then rebase to the signed image, like so:
-  ```
-  rpm-ostree rebase ostree-image-signed:docker://ghcr.io/draugr196/battlemage:latest
-  ```
-- Reboot again to complete the installation
-  ```
-  systemctl reboot
-  ```
-
-The `latest` tag will automatically point to the latest build. That build will still always use the Fedora version specified in `recipe.yml`, so you won't get accidentally updated to the next major version.
 
 ## Building an ISO
 
-If build on Fedora Atomic, you can generate an offline ISO with the instructions available [here](https://blue-build.org/how-to/generate-iso/#_top). These ISOs cannot unfortunately be distributed on GitHub for free due to large sizes, so for public projects something else has to be used for hosting.
+You can generate your own ISO with the instructions available [here](https://blue-build.org/how-to/generate-iso/#_top).
 
 ## Verification
 
