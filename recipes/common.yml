@@ -153,6 +153,7 @@ modules:
       - rm -f /usr/share/dnf5/libdnf.conf.d/protect-sudo.conf
       - dnf remove -y sudo --setopt=protected_packages=,
       #- dnf remove  sudo-python-plugin
+      - printf '%s\n' '{"modules":{"brew":{"disable":true}}}' > /etc/uupd/config.json
       
   - type: default-flatpaks
     configurations:
