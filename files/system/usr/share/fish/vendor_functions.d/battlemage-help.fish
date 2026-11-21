@@ -38,7 +38,6 @@ function battlemage-help --description 'Show Battlemage built-in commands and ti
     __bm_row "cd <path>" "Works like a normal cd"
     __bm_row "cd <keyword>" "Jump to the best match, e.g. cd proj"
     __bm_row "cd <kw1> <kw2>" "Narrow the match with more keywords"
-    __bm_row "cdi" "Pick a directory interactively"
     __bm_row "cd -" "Go back to the previous directory"
 
     __bm_section "Fuzzy finding with fzf"
