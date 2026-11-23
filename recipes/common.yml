@@ -92,6 +92,7 @@ modules:
         - samba-common
         - cifs-utils
         - bat
+        - zram-generator-defaults
 
     remove:
       packages:
