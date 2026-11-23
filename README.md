@@ -3,13 +3,13 @@
 ## Installation ISO
 Premade installation ISO can be downloaded here 
 
-Base: https://drive.proton.me/urls/R359K2P5YW#qfVj7Bn16YlV
+Base: https://drive.proton.me/urls/0GN7TBGGXR#aAUSyZWfQiE2
 
-Webtop: https://drive.proton.me/urls/MWMWX7GKA8#AyzzitjuMM2C
+Webtop: https://drive.proton.me/urls/T2EJKMQD5R#uV3kAJFOZazo
 
-Nvidia: https://drive.proton.me/urls/K1VH2SA95G#mlBess8U05Nq
+Nvidia: https://drive.proton.me/urls/JQDEFFW5MG#NJ5AvbmCZWgn
 
-Nvidia Webtop: https://drive.proton.me/urls/FA64K8157C#hYDC30qzn7ym
+Nvidia Webtop: https://drive.proton.me/urls/8XW7CCPTP0#jvX55yGJSpsQ
 
 
 ## Building an ISO
