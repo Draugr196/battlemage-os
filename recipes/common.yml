@@ -93,6 +93,7 @@ modules:
         - cifs-utils
         - bat
         - zram-generator-defaults
+        - zstd
 
     remove:
       packages:
